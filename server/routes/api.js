@@ -56,13 +56,20 @@ function isEffectivelyArchived(chat, archivedMap) {
   return chat.lastMessage.rowid <= entry.lastMessageRowid;
 }
 
+// Short codes (bare 3–8 digit senders like "96916") are automated blasts —
+// they never belong in the Time Sensitive queue and aren't worth classifying.
+function isShortCodeChat(chat) {
+  return !chat.isGroup && /^\d{3,8}$/.test(chat.chatIdentifier || '');
+}
+
 function toSummary(chat, archivedMap) {
   const last = chat.lastMessage;
+  const triageable = last && !last.isFromMe && !isShortCodeChat(chat);
   return {
     ...chat,
     name: chatName(chat),
     archived: isEffectivelyArchived(chat, archivedMap),
-    triage: last && !last.isFromMe ? getTriage(last.guid) : null,
+    triage: triageable ? getTriage(last.guid) : null,
   };
 }
 
@@ -177,6 +184,7 @@ router.post('/triage/refresh', wrap(async (req, res) => {
   const items = [];
   for (const chat of listChats()) {
     if (isEffectivelyArchived(chat, archivedMap)) continue;
+    if (isShortCodeChat(chat)) continue;
     const last = chat.lastMessage;
     if (!last || last.isFromMe) continue;
     if (getTriage(last.guid)) continue;

@@ -52,6 +52,13 @@ function apiError(err) {
   return new Error(`Anthropic API error: ${status}${err?.message || err}`);
 }
 
+// Adaptive thinking exists on Opus 4.6+/Sonnet 4.6+/Sonnet 5/Fable 5 — not Haiku.
+const ADAPTIVE_THINKING_MODELS = /^claude-(opus-4-[6-9]|sonnet-4-[6-9]|sonnet-5|fable-5|mythos-5)/;
+
+function thinkingConfig(model) {
+  return ADAPTIVE_THINKING_MODELS.test(model) ? { thinking: { type: 'adaptive' } } : {};
+}
+
 export async function generateDraft({ chatName, isGroup, messages, styleExamples, editPairs }) {
   if (!aiAvailable()) throw new Error('AI unavailable');
   const client = getClient();
@@ -61,7 +68,7 @@ export async function generateDraft({ chatName, isGroup, messages, styleExamples
     resp = await client.messages.create({
       model: DRAFT_MODEL,
       max_tokens: 1024,
-      thinking: { type: 'adaptive' },
+      ...thinkingConfig(DRAFT_MODEL),
       system: [
         { type: 'text', text: STABLE_INSTRUCTIONS, cache_control: { type: 'ephemeral' } },
         {
