@@ -1,0 +1,66 @@
+// Fetch helpers for the Joey API. Every chat guid is URL-encoded here, once.
+
+async function request(path, options = {}) {
+  let res;
+  try {
+    res = await fetch(path, options);
+  } catch {
+    throw new Error('network error — is the Joey server running?');
+  }
+  let body = null;
+  try {
+    body = await res.json();
+  } catch {
+    // non-JSON body (or empty); fall through to status handling
+  }
+  if (!res.ok) {
+    if (body && body.error) throw new Error(body.error);
+    if (res.status === 502 || res.status === 504) throw new Error('Joey server unreachable');
+    throw new Error(`${res.status} ${res.statusText || 'request failed'}`);
+  }
+  return body;
+}
+
+function post(path, payload) {
+  const options = { method: 'POST' };
+  if (payload !== undefined) {
+    options.headers = { 'Content-Type': 'application/json' };
+    options.body = JSON.stringify(payload);
+  }
+  return request(path, options);
+}
+
+export function getStatus() {
+  return request('/api/status');
+}
+
+export function getChats(filter = 'inbox') {
+  return request(`/api/chats?filter=${encodeURIComponent(filter)}`);
+}
+
+export function getMessages(guid, { limit = 60, before = null } = {}) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (before != null) params.set('before', String(before));
+  return request(`/api/chats/${encodeURIComponent(guid)}/messages?${params}`);
+}
+
+export function sendMessage(guid, text, draftId = null) {
+  const payload = draftId != null ? { text, draftId } : { text };
+  return post(`/api/chats/${encodeURIComponent(guid)}/send`, payload);
+}
+
+export function archiveChat(guid) {
+  return post(`/api/chats/${encodeURIComponent(guid)}/archive`);
+}
+
+export function unarchiveChat(guid) {
+  return post(`/api/chats/${encodeURIComponent(guid)}/unarchive`);
+}
+
+export function requestDraft(guid) {
+  return post(`/api/chats/${encodeURIComponent(guid)}/draft`);
+}
+
+export function refreshTriage() {
+  return post('/api/triage/refresh');
+}

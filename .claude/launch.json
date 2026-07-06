@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "joey",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["JOEY_DRY_RUN=1", "node", "server/index.js"],
+      "port": 3456
+    },
+    {
+      "name": "joey-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "web", "run", "dev"],
+      "port": 5173
+    }
+  ]
+}

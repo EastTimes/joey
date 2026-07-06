@@ -1,0 +1,17 @@
+{
+  "name": "joey",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A productivity-first iMessage client for Mac — reads chat.db locally, sends via AppleScript",
+  "scripts": {
+    "start": "node server/index.js",
+    "build": "npm --prefix web run build",
+    "dev:web": "npm --prefix web run dev"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
+    "better-sqlite3": "^12.11.1",
+    "express": "^5.2.1"
+  }
+}
