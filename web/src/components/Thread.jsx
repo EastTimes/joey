@@ -173,7 +173,7 @@ export default function Thread({ chat, aiAvailable, onArchiveToggle, onSent, pus
           <button
             className="icon-btn"
             onClick={() => onArchiveToggle(chat)}
-            title={chat.archived ? 'Unarchive (⌘E)' : 'Archive (⌘E)'}
+            title={chat.archived ? 'Unarchive (⌘⇧E)' : 'Archive (⌘⇧E)'}
             aria-label={chat.archived ? 'Unarchive' : 'Archive'}
           >
             {chat.archived ? <UnarchiveIcon size={15} /> : <ArchiveIcon size={15} />}

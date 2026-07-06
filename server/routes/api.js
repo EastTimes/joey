@@ -62,9 +62,14 @@ function isShortCodeChat(chat) {
   return !chat.isGroup && /^\d{3,8}$/.test(chat.chatIdentifier || '');
 }
 
+// Group chats and short codes are exempt from time-sensitive triage.
+function isTriageExempt(chat) {
+  return chat.isGroup || isShortCodeChat(chat);
+}
+
 function toSummary(chat, archivedMap) {
   const last = chat.lastMessage;
-  const triageable = last && !last.isFromMe && !isShortCodeChat(chat);
+  const triageable = last && !last.isFromMe && !isTriageExempt(chat);
   return {
     ...chat,
     name: chatName(chat),
@@ -184,7 +189,7 @@ router.post('/triage/refresh', wrap(async (req, res) => {
   const items = [];
   for (const chat of listChats()) {
     if (isEffectivelyArchived(chat, archivedMap)) continue;
-    if (isShortCodeChat(chat)) continue;
+    if (isTriageExempt(chat)) continue;
     const last = chat.lastMessage;
     if (!last || last.isFromMe) continue;
     if (getTriage(last.guid)) continue;

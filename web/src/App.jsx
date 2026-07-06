@@ -90,7 +90,7 @@ export default function App() {
     return null;
   }, [chats, activeGuid]);
 
-  // Sidebar order (also used by keyboard nav & ⌘E next-selection):
+  // Sidebar order (also used by keyboard nav & ⌘⇧E next-selection):
   // time-sensitive first, then the rest.
   const orderedGuids = useMemo(() => {
     if (!chats) return [];
@@ -181,12 +181,12 @@ export default function App() {
 
   const handleSent = useCallback(() => loadChats(view), [view, loadChats]);
 
-  // ⌘E (Ctrl+E off-Mac): archive the selected chat — unarchive when in the
-  // archived view. Capture phase so it wins even while the composer has focus.
+  // ⌘⇧E (Ctrl+Shift+E off-Mac): archive the selected chat — unarchive when in
+  // the archived view. Capture phase so it wins even while the composer has focus.
   useEffect(() => {
     const onKey = (e) => {
       const mod = IS_MAC ? e.metaKey : e.ctrlKey;
-      if (!mod || e.altKey || e.shiftKey) return;
+      if (!mod || !e.shiftKey || e.altKey) return;
       if ((e.key || '').toLowerCase() !== 'e') return;
       e.preventDefault();
       e.stopPropagation();
@@ -260,7 +260,7 @@ function EmptyThread() {
     <div className="thread-empty">
       <div className="te-title">No Conversation Selected</div>
       <p className="te-line">Choose a conversation from the sidebar to read and reply.</p>
-      <p className="te-hint">↑↓ move · ⌘E archive · Enter send · ⇧Enter newline</p>
+      <p className="te-hint">↑↓ move · ⌘⇧E archive · Enter send · ⇧Enter newline</p>
     </div>
   );
 }

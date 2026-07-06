@@ -127,7 +127,7 @@ export default function Sidebar({
             {!loading && chats && chats.length === 0 && !chatsError && (
               <div className="inbox-zero">
                 <div className="iz-title">No archived conversations.</div>
-                <div className="iz-sub">Press ⌘E to archive the selected chat.</div>
+                <div className="iz-sub">Press ⌘⇧E to archive the selected chat.</div>
               </div>
             )}
           </>
@@ -239,7 +239,7 @@ function ChatRow({ chat, active, timeSensitive, archivedView, onSelect, onArchiv
       </div>
       <button
         className="row-archive"
-        title={archivedView ? `Unarchive (⌘E)` : `Archive (⌘E)`}
+        title={archivedView ? `Unarchive (⌘⇧E)` : `Archive (⌘⇧E)`}
         aria-label={archivedView ? `Unarchive ${name}` : `Archive ${name}`}
         onClick={(e) => {
           e.stopPropagation();
@@ -257,7 +257,7 @@ function InboxZero() {
   return (
     <div className="inbox-zero">
       <div className="iz-title">No conversations — you're all caught up.</div>
-      <div className="iz-sub">New messages will appear here. ⌘E archives the selected chat.</div>
+      <div className="iz-sub">New messages will appear here. ⌘⇧E archives the selected chat.</div>
     </div>
   );
 }
