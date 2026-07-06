@@ -23,6 +23,7 @@ import { resolveName } from '../imessage/contacts.js';
 import { aiAvailable, DRAFT_MODEL } from '../ai/client.js';
 import { generateDraft } from '../ai/draft.js';
 import { classifyBatch } from '../ai/triage.js';
+import { sseHandler } from '../lib/events.js';
 
 const router = Router();
 
@@ -108,6 +109,9 @@ router.get('/status', wrap(async (req, res) => {
     draftModel: DRAFT_MODEL,
   });
 }));
+
+// SSE stream: `event: change` whenever chat.db changes on disk (see lib/events.js).
+router.get('/events', sseHandler);
 
 router.get('/chats', wrap(async (req, res) => {
   const filter = req.query.filter || 'inbox';

@@ -17,6 +17,7 @@ export default function App() {
   const [activeGuid, setActiveGuid] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [refreshingTriage, setRefreshingTriage] = useState(false);
+  const [changeTick, setChangeTick] = useState(0); // bumped on SSE 'change'
   const lastActiveChat = useRef(null);
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -75,6 +76,24 @@ export default function App() {
       clearInterval(t);
     };
   }, []);
+
+  // Real-time updates: the server watches chat.db and pushes a 'change' event
+  // over SSE. Refresh the chat list and nudge the open thread to refetch.
+  // The polling above stays as the fallback; EventSource reconnects on its
+  // own, so errors are left silent.
+  useEffect(() => {
+    let es;
+    try {
+      es = new EventSource('/api/events');
+    } catch {
+      return; // no EventSource support — polling covers it
+    }
+    es.addEventListener('change', () => {
+      loadChats(viewRef.current);
+      setChangeTick((t) => t + 1);
+    });
+    return () => es.close();
+  }, [loadChats]);
 
   // Keep a snapshot of the open chat so the thread survives list churn
   // (e.g. the chat just got archived out of the current filter).
@@ -199,6 +218,25 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [activeGuid, orderedGuids, view, handleArchive, handleUnarchive]);
 
+  // Bare E (no modifiers): same archive/unarchive as ⌘⇧E, but only while
+  // focus is outside text fields — the chord above stays as the
+  // works-while-typing fallback.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      if ((e.key || '').toLowerCase() !== 'e') return;
+      const el = document.activeElement;
+      if (el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT' || el.isContentEditable)) return;
+      e.preventDefault();
+      if (!activeGuid) return; // no chat selected — no-op
+      if (!orderedGuids.includes(activeGuid)) return; // selection not in the visible list
+      if (view === 'archived') handleUnarchive(activeGuid);
+      else handleArchive(activeGuid);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeGuid, orderedGuids, view, handleArchive, handleUnarchive]);
+
   // ↑/↓ move the selection through the sidebar (outside text fields).
   useEffect(() => {
     const onKey = (e) => {
@@ -240,6 +278,7 @@ export default function App() {
             <Thread
               key={activeChat.guid}
               chat={activeChat}
+              refreshSignal={changeTick}
               aiAvailable={!!status?.aiAvailable}
               onArchiveToggle={handleArchiveToggle}
               onSent={handleSent}
@@ -260,7 +299,7 @@ function EmptyThread() {
     <div className="thread-empty">
       <div className="te-title">No Conversation Selected</div>
       <p className="te-line">Choose a conversation from the sidebar to read and reply.</p>
-      <p className="te-hint">↑↓ move · ⌘⇧E archive · Enter send · ⇧Enter newline</p>
+      <p className="te-hint">↑↓ move · E archive · Enter send · ⇧Enter newline</p>
     </div>
   );
 }

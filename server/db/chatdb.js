@@ -101,6 +101,22 @@ function prepareStatements(d) {
       LIMIT ?
     `),
 
+    // Tapback rows in one chat at/after a rowid bound. Tapbacks are always
+    // inserted after the message they target, so bounding by the page's lowest
+    // rowid keeps this an index-range scan instead of a whole-chat sweep.
+    tapbacks: d.prepare(`
+      SELECT m.ROWID AS rowid, m.associated_message_type AS type,
+             m.associated_message_emoji AS emoji,
+             m.associated_message_guid AS targetRef,
+             m.is_from_me, h.id AS handleId
+      FROM chat_message_join cmj
+      JOIN message m ON m.ROWID = cmj.message_id
+      LEFT JOIN handle h ON h.ROWID = m.handle_id
+      WHERE cmj.chat_id = ? AND cmj.message_id >= ?
+        AND m.associated_message_type BETWEEN 2000 AND 3999
+      ORDER BY m.ROWID ASC
+    `),
+
     // +m.is_from_me defeats the (is_read,is_from_me,item_type) index, which would
     // otherwise temp-sort every sent message; a backward rowid scan is ~100x faster.
     recentSent: d.prepare(`
@@ -132,7 +148,56 @@ function rowToMsg(r) {
     senderId: isFromMe ? null : r.handleId ?? null,
     service: r.service || 'iMessage',
     hasAttachments: !!r.cache_has_attachments,
+    reactions: [], // filled in by attachReactions (getMessages pages only)
   };
+}
+
+// Tapback emoji for associated_message_type % 1000 (0..5). Types x006/x007 are
+// custom-emoji/sticker tapbacks and carry associated_message_emoji instead.
+const TAPBACK_EMOJI = ['❤️', '\u{1F44D}', '\u{1F44E}', '\u{1F602}', '‼️', '❓'];
+
+// associated_message_guid formats seen in real data: 'p:<part>/<GUID>',
+// 'bp:<GUID>', or occasionally the bare GUID. Strip to the bare GUID.
+function bareTargetGuid(ref) {
+  if (!ref) return null;
+  if (ref.startsWith('bp:')) return ref.slice(3);
+  if (ref.startsWith('p:')) {
+    const slash = ref.indexOf('/');
+    if (slash !== -1) return ref.slice(slash + 1);
+  }
+  return ref;
+}
+
+// Attach reactions: [{emoji, isFromMe}] to each message of a page. Removals
+// (3000s) are netted out: per (reactor, target, emoji) only the most recent
+// tapback row counts, and it only shows if it's an add (2000s).
+function attachReactions(chatRowid, messages) {
+  for (const m of messages) m.reactions = [];
+  if (messages.length === 0) return messages;
+
+  const byGuid = new Map(messages.map((m) => [m.guid, m]));
+  const minRowid = Math.min(...messages.map((m) => m.rowid));
+
+  // Latest tapback row per (reactor, target guid, emoji). Rows arrive in
+  // ascending rowid order, so a later row simply overwrites the earlier one.
+  const latest = new Map();
+  for (const r of stmts.tapbacks.all(chatRowid, minRowid)) {
+    const target = bareTargetGuid(r.targetRef);
+    if (!target || !byGuid.has(target)) continue;
+    const kind = r.type % 1000;
+    const emoji = kind <= 5 ? TAPBACK_EMOJI[kind] : r.emoji;
+    if (!emoji) continue; // e.g. sticker tapbacks (2007) with no emoji
+    const isFromMe = !!r.is_from_me;
+    const reactor = isFromMe ? 'me' : r.handleId ?? '?';
+    latest.set(`${reactor}|${target}|${emoji}`, {
+      target, emoji, isFromMe, add: r.type < 3000,
+    });
+  }
+
+  for (const t of latest.values()) {
+    if (t.add) byGuid.get(t.target).reactions.push({ emoji: t.emoji, isFromMe: t.isFromMe });
+  }
+  return messages;
 }
 
 // Keep messages with real text, or attachments even if textless.
@@ -241,7 +306,7 @@ export function getMessages(chatGuid, { limit = 60, beforeRowid = null } = {}) {
     }
     before = batch[batch.length - 1].rowid;
   }
-  return out.reverse();
+  return attachReactions(cid, out.reverse());
 }
 
 export function getLastIncomingMessage(chatGuid) {

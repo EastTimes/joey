@@ -13,7 +13,7 @@ function mergeMessages(prev, incoming) {
   return [...map.values()].sort((a, b) => a.rowid - b.rowid);
 }
 
-export default function Thread({ chat, aiAvailable, onArchiveToggle, onSent, pushToast }) {
+export default function Thread({ chat, refreshSignal, aiAvailable, onArchiveToggle, onSent, pushToast }) {
   const guid = chat.guid;
   const [messages, setMessages] = useState(null); // null = loading
   const [pending, setPending] = useState([]); // optimistic sends
@@ -56,6 +56,11 @@ export default function Thread({ chat, aiAvailable, onArchiveToggle, onSent, pus
     }, 3000);
     return () => clearInterval(t);
   }, [pollLatest]);
+
+  // SSE said chat.db changed — refetch right away instead of waiting for the poll.
+  useEffect(() => {
+    if (refreshSignal) pollLatest();
+  }, [refreshSignal, pollLatest]);
 
   const loadOlder = useCallback(async () => {
     if (!messages || messages.length === 0 || olderState !== 'idle') return;
@@ -173,7 +178,7 @@ export default function Thread({ chat, aiAvailable, onArchiveToggle, onSent, pus
           <button
             className="icon-btn"
             onClick={() => onArchiveToggle(chat)}
-            title={chat.archived ? 'Unarchive (⌘⇧E)' : 'Archive (⌘⇧E)'}
+            title={chat.archived ? 'Unarchive (E or ⌘⇧E)' : 'Archive (E or ⌘⇧E)'}
             aria-label={chat.archived ? 'Unarchive' : 'Archive'}
           >
             {chat.archived ? <UnarchiveIcon size={15} /> : <ArchiveIcon size={15} />}
@@ -226,16 +231,37 @@ export default function Thread({ chat, aiAvailable, onArchiveToggle, onSent, pus
 function Bubble({ msg, showSender, cont }) {
   const mine = msg.isFromMe;
   const sms = msg.service !== 'iMessage';
+  const reactions = msg.reactions || [];
   return (
-    <div className={`msg-row ${mine ? 'mine' : 'theirs'} ${cont ? 'cont' : ''}`}>
+    <div className={`msg-row ${mine ? 'mine' : 'theirs'} ${cont ? 'cont' : ''} ${reactions.length ? 'has-rx' : ''}`}>
       <div className="msg-stack">
         {showSender && <div className="msg-sender">{msg.senderName || msg.senderId || 'Unknown'}</div>}
-        <div className={`bubble ${mine ? (sms ? 'b-sms' : 'b-mine') : 'b-theirs'}`}>
-          {msg.text || (msg.hasAttachments ? <span className="attach-note">Attachment</span> : ' ')}
+        <div className="bubble-wrap">
+          <div className={`bubble ${mine ? (sms ? 'b-sms' : 'b-mine') : 'b-theirs'}`}>
+            {msg.text || (msg.hasAttachments ? <span className="attach-note">Attachment</span> : ' ')}
+          </div>
+          {reactions.length > 0 && <Reactions reactions={reactions} />}
         </div>
       </div>
       <span className="msg-time">{timeOfDay(msg.dateMs)}</span>
     </div>
+  );
+}
+
+// Tapbacks as a small pill overlapping the bubble's top corner, on the side
+// opposite the one the bubble hugs. Same emoji is deduped with a ×N count.
+function Reactions({ reactions }) {
+  const counts = new Map();
+  for (const r of reactions) counts.set(r.emoji, (counts.get(r.emoji) || 0) + 1);
+  return (
+    <span className="rx-pill" aria-label="Reactions">
+      {[...counts.entries()].map(([emoji, n]) => (
+        <span className="rx-item" key={emoji}>
+          {emoji}
+          {n > 1 && <span className="rx-count">{n}</span>}
+        </span>
+      ))}
+    </span>
   );
 }
 
