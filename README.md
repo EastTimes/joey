@@ -1,4 +1,3 @@
-# Joey
 
 **iMessage, but built for productivity.** The Mac Messages app isn't designed for people
 answering 100+ texts a day — messages get lost, nothing can be archived, and every reply
