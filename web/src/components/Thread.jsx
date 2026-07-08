@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import * as api from '../api.js';
 import Composer from './Composer.jsx';
 import { dayLabel, sameDay, timeOfDay } from '../format.js';
-import { FlagIcon, ReplyArrowIcon, ChevronUpIcon, ArchiveIcon, UnarchiveIcon } from './Icons.jsx';
+import { FlagIcon, CalendarIcon, ReplyArrowIcon, ChevronUpIcon, ArchiveIcon, UnarchiveIcon } from './Icons.jsx';
 
 const PAGE = 60;
 
@@ -176,9 +176,27 @@ export default function Thread({ chat, refreshSignal, aiAvailable, onArchiveTogg
               {triage.deadline && <span className="th-deadline">{triage.deadline}</span>}
             </div>
           )}
-          {!triage?.timeSensitive && followup && (
+          {!triage?.timeSensitive && followup?.kind === 'calendar_pending' && followup.action?.calendarUrl && (
+            <a
+              className="th-action-btn"
+              href={followup.action.calendarUrl}
+              target="_blank"
+              rel="noreferrer"
+              title="Create Google Calendar invite"
+            >
+              <CalendarIcon size={11} />
+              <span>Send invite</span>
+            </a>
+          )}
+          {!triage?.timeSensitive && followup && followup.kind !== 'calendar_pending' && (
             <div className="th-triage th-followup" title={followup.reason}>
               <ReplyArrowIcon size={9} />
+              <span className="th-reason">{followup.reason}</span>
+            </div>
+          )}
+          {!triage?.timeSensitive && followup?.kind === 'calendar_pending' && (
+            <div className="th-triage th-action" title={followup.reason}>
+              <CalendarIcon size={9} />
               <span className="th-reason">{followup.reason}</span>
             </div>
           )}

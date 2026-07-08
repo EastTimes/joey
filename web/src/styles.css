@@ -183,6 +183,33 @@ code {
   border-bottom-color: var(--banner-err-line);
 }
 
+.banner-cal {
+  background: rgba(10, 132, 255, 0.08);
+  color: var(--text);
+  border-bottom-color: rgba(10, 132, 255, 0.2);
+}
+
+.banner-cal-ok {
+  background: rgba(52, 199, 89, 0.1);
+  border-bottom-color: rgba(52, 199, 89, 0.25);
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.cal-connect {
+  color: var(--blue);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.cal-connect:hover {
+  text-decoration: underline;
+}
+
+.cal-hint {
+  color: var(--text-2);
+}
+
 .sidebar-head {
   display: flex;
   align-items: center;
@@ -262,6 +289,19 @@ code {
 .section-fu .count {
   color: var(--blue);
   opacity: 0.7;
+}
+
+.section-action {
+  color: #5856d6;
+}
+
+.section-action .count {
+  color: #5856d6;
+  opacity: 0.7;
+}
+
+.row-reason-action {
+  color: #5856d6;
 }
 
 .list-note {
@@ -519,12 +559,132 @@ code {
 
 .sidebar-foot {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
   padding: 8px 14px;
   border-top: 1px solid var(--hairline);
   flex-shrink: 0;
+}
+
+.sidebar-foot-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cal-foot {
+  width: 100%;
+}
+
+.cal-foot-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: left;
+  padding: 4px 0;
+}
+
+.cal-foot-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--orange-deep);
+  text-transform: uppercase;
+}
+
+.cal-foot-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0 6px;
+}
+
+.cal-foot-step {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-2);
+  line-height: 1.45;
+}
+
+.cal-foot-uri.block {
+  display: block;
+  white-space: pre-wrap;
+  margin-bottom: 6px;
+}
+
+.cal-foot-uri {
+  display: block;
+  font-size: 10px;
+  word-break: break-all;
+  padding: 4px 6px;
+  background: var(--control);
+  border-radius: 6px;
+}
+
+.cal-foot-input {
+  font: inherit;
+  font-size: 11px;
+  padding: 6px 8px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 6px;
+  background: var(--thread-bg);
+  color: var(--text);
+}
+
+.cal-foot-btn {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--control);
+  color: var(--text);
+  text-align: center;
+  text-decoration: none;
+}
+
+.cal-foot-btn-primary {
+  background: var(--blue);
+  color: #fff;
+}
+
+.cal-foot-btn:disabled {
+  opacity: 0.5;
+}
+
+.cal-foot-err {
+  font-size: 11px;
+  color: var(--red-deep);
+}
+
+.cal-foot-ok {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.cal-foot-label {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.cal-foot-email {
+  color: var(--green);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-foot-link {
+  font-size: 10px;
+  color: var(--text-2);
+  margin-left: auto;
 }
 
 .view-toggle {
@@ -628,6 +788,29 @@ code {
 .th-followup {
   background: rgba(10, 132, 255, 0.12);
   color: var(--blue);
+}
+
+.th-action {
+  background: rgba(88, 86, 214, 0.12);
+  color: #5856d6;
+}
+
+.th-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #5856d6;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+.th-action-btn:hover {
+  filter: brightness(1.08);
 }
 
 .th-reason {

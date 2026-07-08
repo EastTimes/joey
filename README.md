@@ -27,9 +27,13 @@ without a key).
    → Full Disk Access) so Joey can read `chat.db`.
 2. **Automation permission** — the first send will prompt to allow your terminal to
    control Messages.app. Approve it.
-3. **Google Calendar** (optional, suppresses false "calendar invite" follow-ups):
-   set up [`~/calendar`](/Users/richzou/calendar) (`credentials.json` + run `python sync.py` once for `token.json`),
-   then `export JOEY_GOOGLE_USER_EMAIL=you@gmail.com`.
+3. **Google Calendar** (optional — verifies sent invites, kills false follow-ups):
+   - **Host setup (once per install):** create a [Google OAuth client](https://console.cloud.google.com/apis/credentials) (Web app), enable Calendar API, add redirect URI `http://127.0.0.1:3456/api/calendar/callback`, then:
+     ```sh
+     export JOEY_GOOGLE_CLIENT_ID=your-client-id
+     export JOEY_GOOGLE_CLIENT_SECRET=your-client-secret
+     ```
+   - **Each user:** click **Sign in with Google** in the Joey sidebar (no token files)
 4. **Claude API key** (optional, enables AI features):
    ```sh
    export ANTHROPIC_API_KEY=sk-ant-...
@@ -54,8 +58,8 @@ For frontend development: `npm start` in one terminal, `npm run dev:web` in anot
 | `JOEY_DRAFT_MODEL` | `claude-opus-4-8` | drafting model |
 | `JOEY_TRIAGE_MODEL` | `claude-opus-4-8` | triage model (`claude-haiku-4-5` is a cheap alternative) |
 | `JOEY_FOLLOWUP_MODEL` | same as triage | follow-up classification model |
-| `JOEY_GOOGLE_USER_EMAIL` | unset | your Google account email (for calendar invite checks) |
-| `JOEY_GOOGLE_CALENDAR_DIR` | `~/calendar` | dir with `credentials.json` + `token.json` |
+| `JOEY_GOOGLE_CLIENT_ID` | unset | OAuth client ID (enables one-click Google sign-in) |
+| `JOEY_GOOGLE_CLIENT_SECRET` | unset | OAuth client secret (server-side only, never in the browser) |
 | `JOEY_GOOGLE_CALENDAR_ID` | `primary` | calendar to scan for sent invites |
 | `JOEY_DATA_DIR` | `~/.joey` | where Joey keeps its own state (archives, drafts, learning) |
 | `JOEY_CHATDB` | `~/Library/Messages/chat.db` | Messages database path |

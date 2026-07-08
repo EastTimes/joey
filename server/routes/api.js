@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { Router } from 'express';
 import {
   chatDbOk,
@@ -33,7 +36,16 @@ import { classifyFollowups } from '../ai/followups.js';
 import { isFollowupCandidate } from '../lib/candidates.js';
 import { recentMessages } from '../lib/followupContext.js';
 import { candidateEmailsForChat, chatHasCalendarInvite } from '../lib/calendarMatch.js';
-import { getInvitedAttendeeEmails, calendarStatus, hasInvitedEmail } from '../calendar/google.js';
+import { calendarInviteUrl } from '../lib/calendarActions.js';
+import {
+  getInvitedAttendeeEmails,
+  calendarStatus,
+  hasInvitedEmail,
+  getCalendarAuthUrl,
+  completeCalendarOAuth,
+  disconnectCalendar,
+  hasGoogleCredentials,
+} from '../calendar/index.js';
 import { sseHandler } from '../lib/events.js';
 
 const router = Router();
@@ -79,9 +91,17 @@ function isTriageExempt(chat) {
   return chat.isGroup || isShortCodeChat(chat);
 }
 
-function calendarInviteCoversChat(chat, invitedEmails) {
+// Group chats often list phone-only participants; emails appear in thread text.
+const CALENDAR_MATCH_MSG_LIMIT = 30;
+
+function calendarMatchMessages(chat) {
+  return getMessages(chat.guid, { limit: CALENDAR_MATCH_MSG_LIMIT });
+}
+
+function calendarInviteCoversChat(chat, invitedEmails, messages = calendarMatchMessages(chat)) {
   if (!invitedEmails) return false;
-  return candidateEmailsForChat(chat).some((e) => hasInvitedEmail(invitedEmails, e));
+  const candidates = candidateEmailsForChat(chat, messages);
+  return candidates.some((e) => hasInvitedEmail(invitedEmails, e));
 }
 
 function activeFollowup(chat, dismissedMap, invitedEmails) {
@@ -92,14 +112,25 @@ function activeFollowup(chat, dismissedMap, invitedEmails) {
   if (!cached || cached.lastMessageRowid !== last.rowid) return null;
   if (!cached.needsFollowup || !cached.kind) return null;
   if (isFollowupDismissed(chat.guid, cached.kind, dismissedMap)) return null;
-  if (cached.kind === 'calendar_pending' && calendarInviteCoversChat(chat, invitedEmails)) {
-    return null;
-  }
-  return {
+
+  const followup = {
     kind: cached.kind,
     reason: cached.reason,
     triggerDateMs: last.dateMs,
   };
+
+  if (cached.kind === 'calendar_pending') {
+    const messages = calendarMatchMessages(chat);
+    if (calendarInviteCoversChat(chat, invitedEmails, messages)) return null;
+    const emails = candidateEmailsForChat(chat, messages);
+    followup.action = {
+      type: 'calendar_invite',
+      emails,
+      calendarUrl: calendarInviteUrl(emails, `Meeting with ${chatName(chat)}`),
+    };
+  }
+
+  return followup;
 }
 
 function toSummary(chat, archivedMap, dismissedMap, invitedEmails) {
@@ -145,6 +176,71 @@ router.get('/status', wrap(async (req, res) => {
     messageCount: dbOk ? messageCount() : 0,
     draftModel: DRAFT_MODEL,
     calendar: calendarStatus(),
+  });
+}));
+
+// Google Calendar OAuth — browser sign-in, no manual token.json editing.
+router.get('/calendar/connect', wrap(async (req, res) => {
+  try {
+    res.redirect(getCalendarAuthUrl());
+  } catch (err) {
+    res.status(400).send(err?.message || String(err));
+  }
+}));
+
+router.get('/calendar/callback', wrap(async (req, res) => {
+  const errMsg = req.query.error_description || req.query.error;
+  if (errMsg) {
+    return res.redirect(`/?calendar=error&message=${encodeURIComponent(String(errMsg))}`);
+  }
+  const code = req.query.code;
+  const state = req.query.state;
+  if (!code) return res.status(400).send('missing code');
+  try {
+    const email = await completeCalendarOAuth(code, state);
+    res.redirect(`/?calendar=connected&email=${encodeURIComponent(email)}`);
+  } catch (err) {
+    res.redirect(`/?calendar=error&message=${encodeURIComponent(err?.message || String(err))}`);
+  }
+}));
+
+router.post('/calendar/disconnect', wrap(async (req, res) => {
+  disconnectCalendar();
+  res.json({ ok: true });
+}));
+
+router.post('/calendar/credentials', wrap(async (req, res) => {
+  const { clientId, clientSecret } = req.body || {};
+  if (typeof clientId !== 'string' || !clientId.trim()) {
+    return res.status(400).json({ error: 'clientId required' });
+  }
+  if (typeof clientSecret !== 'string' || !clientSecret.trim()) {
+    return res.status(400).json({ error: 'clientSecret required' });
+  }
+  const port = Number(process.env.JOEY_PORT || 3456);
+  const dir = process.env.JOEY_DATA_DIR || path.join(os.homedir(), '.joey');
+  fs.mkdirSync(dir, { recursive: true });
+  const creds = {
+    installed: {
+      client_id: clientId.trim(),
+      project_id: 'joey-local',
+      auth_uri: 'https://accounts.google.com/o/oauth2/auth',
+      token_uri: 'https://oauth2.googleapis.com/token',
+      client_secret: clientSecret.trim(),
+      redirect_uris: [`http://127.0.0.1:${port}/api/calendar/callback`],
+    },
+  };
+  fs.writeFileSync(path.join(dir, 'google-credentials.json'), JSON.stringify(creds, null, 2));
+  res.json({ ok: true, redirectUri: creds.installed.redirect_uris[0] });
+}));
+
+router.get('/calendar/setup', wrap(async (req, res) => {
+  const port = Number(process.env.JOEY_PORT || 3456);
+  const fromEnv = !!(process.env.JOEY_GOOGLE_CLIENT_ID && process.env.JOEY_GOOGLE_CLIENT_SECRET);
+  res.json({
+    oauthReady: hasGoogleCredentials(),
+    credentialsFromEnv: fromEnv,
+    redirectUri: `http://127.0.0.1:${port}/api/calendar/callback`,
   });
 }));
 
@@ -257,6 +353,9 @@ router.post('/followups/refresh', wrap(async (req, res) => {
 
     const last = chat.lastMessage;
     if (!last) continue;
+
+    const cached = getFollowup(chat.guid);
+    if (cached && cached.lastMessageRowid === last.rowid) continue;
 
     items.push({
       chatGuid: chat.guid,

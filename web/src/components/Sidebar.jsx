@@ -1,6 +1,8 @@
 import { relTime, compactCount } from '../format.js';
+import CalendarConnect from './CalendarConnect.jsx';
 import {
   FlagIcon,
+  CalendarIcon,
   ReplyArrowIcon,
   DismissIcon,
   ArchiveIcon,
@@ -22,6 +24,7 @@ export default function Sidebar({
   onUnarchive,
   onRefreshTriage,
   onDismissFollowup,
+  onStatusRefresh,
   refreshing,
   status,
   serverUp,
@@ -29,9 +32,11 @@ export default function Sidebar({
   const loading = chats === null;
   const inArchived = view === 'archived';
   const timeSensitive = !inArchived && chats ? chats.filter((c) => c.triage?.timeSensitive) : [];
-  const followups = !inArchived && chats
+  const flagged = !inArchived && chats
     ? chats.filter((c) => c.followup && !c.triage?.timeSensitive)
     : [];
+  const actionItems = flagged.filter((c) => c.followup?.kind === 'calendar_pending');
+  const followups = flagged.filter((c) => c.followup?.kind !== 'calendar_pending');
   const rest = chats
     ? inArchived
       ? chats
@@ -58,6 +63,7 @@ export default function Sidebar({
           Dry run — sends are logged, never delivered.
         </div>
       )}
+
 
       <header className="sidebar-head">
         <h1 className="sb-title">{inArchived ? 'Archived' : 'Messages'}</h1>
@@ -94,6 +100,27 @@ export default function Sidebar({
                     onSelect={onSelect}
                     onArchive={onArchive}
                     onUnarchive={onUnarchive}
+                  />
+                ))}
+              </>
+            )}
+            {actionItems.length > 0 && (
+              <>
+                <div className="section-label section-action">
+                  <CalendarIcon size={10} />
+                  <span>Action Items</span>
+                  <span className="count">{actionItems.length}</span>
+                </div>
+                {actionItems.map((c) => (
+                  <ChatRow
+                    key={c.guid}
+                    chat={c}
+                    actionItem
+                    active={c.guid === activeGuid}
+                    onSelect={onSelect}
+                    onArchive={onArchive}
+                    onUnarchive={onUnarchive}
+                    onDismissFollowup={onDismissFollowup}
                   />
                 ))}
               </>
@@ -138,7 +165,7 @@ export default function Sidebar({
             {!loading && chats && chats.length === 0 && !chatsError && <InboxZero />}
             {!loading && chats && chats.length > 0 && rest.length === 0 && (
               <div className="list-note">
-                {timeSensitive.length + followups.length > 0
+                {timeSensitive.length + actionItems.length + followups.length > 0
                   ? 'Nothing else in the regular inbox.'
                   : 'Nothing else — just the flagged chats above.'}
               </div>
@@ -170,18 +197,21 @@ export default function Sidebar({
       </div>
 
       <footer className="sidebar-foot">
-        <button className="view-toggle" onClick={() => setView(inArchived ? 'inbox' : 'archived')}>
-          {inArchived ? (
-            <>
-              <BackIcon size={12} /> Back to Inbox
-            </>
-          ) : (
-            <>
-              <ArchiveIcon size={13} /> Archived
-            </>
-          )}
-        </button>
-        {status?.chatDbOk && <span className="db-stat">{compactCount(status.messageCount)} messages</span>}
+        <CalendarConnect status={status} onConnected={onStatusRefresh} />
+        <div className="sidebar-foot-row">
+          <button className="view-toggle" onClick={() => setView(inArchived ? 'inbox' : 'archived')}>
+            {inArchived ? (
+              <>
+                <BackIcon size={12} /> Back to Inbox
+              </>
+            ) : (
+              <>
+                <ArchiveIcon size={13} /> Archived
+              </>
+            )}
+          </button>
+          {status?.chatDbOk && <span className="db-stat">{compactCount(status.messageCount)} messages</span>}
+        </div>
       </footer>
     </aside>
   );
@@ -233,6 +263,7 @@ function ChatRow({
   active,
   timeSensitive,
   followup,
+  actionItem,
   archivedView,
   onSelect,
   onArchive,
@@ -254,7 +285,7 @@ function ChatRow({
 
   return (
     <div
-      className={`chat-row ${active ? 'active' : ''} ${timeSensitive ? 'ts' : ''} ${followup ? 'fu' : ''}`}
+      className={`chat-row ${active ? 'active' : ''} ${timeSensitive ? 'ts' : ''} ${actionItem ? 'action' : ''} ${followup ? 'fu' : ''}`}
       role="option"
       aria-selected={active}
       tabIndex={0}
@@ -280,6 +311,17 @@ function ChatRow({
             </span>
           </div>
         )}
+        {actionItem && chat.followup && (
+          <div className="row-reason row-reason-action">
+            <CalendarIcon size={9} />
+            <span>
+              {chat.followup.reason}
+              {chat.followup.triggerDateMs ? (
+                <em className="row-deadline"> · {relTime(chat.followup.triggerDateMs)}</em>
+              ) : null}
+            </span>
+          </div>
+        )}
         {followup && chat.followup && (
           <div className="row-reason row-reason-fu">
             <ReplyArrowIcon size={9} />
@@ -293,7 +335,7 @@ function ChatRow({
         )}
         <div className="row-snippet">{snippet}</div>
       </div>
-      {followup && onDismissFollowup && (
+      {(followup || actionItem) && onDismissFollowup && (
         <button
           className="row-dismiss"
           title="Dismiss follow-up"

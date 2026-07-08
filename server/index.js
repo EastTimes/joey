@@ -7,7 +7,7 @@ import { loadContacts } from './imessage/contacts.js';
 import { chatDbOk, messageCount } from './db/chatdb.js';
 import { aiAvailable } from './ai/client.js';
 import { startWatcher } from './lib/events.js';
-import { calendarConfigured, getInvitedAttendeeEmails } from './calendar/google.js';
+import { getInvitedAttendeeEmails, calendarConfigured } from './calendar/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.resolve(__dirname, '..', 'web', 'dist');

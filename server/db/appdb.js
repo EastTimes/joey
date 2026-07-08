@@ -79,6 +79,12 @@ export function openAppDb() {
       dismissed_at  TEXT NOT NULL,
       snooze_until  TEXT
     );
+    CREATE TABLE IF NOT EXISTS google_auth (
+      id            INTEGER PRIMARY KEY CHECK (id = 1),
+      email         TEXT NOT NULL,
+      tokens        TEXT NOT NULL,
+      connected_at  TEXT NOT NULL
+    );
   `);
 
   stmts = {
@@ -142,6 +148,18 @@ export function openAppDb() {
     dismissedAll: db.prepare(
       `SELECT chat_guid, kind, dismissed_at, snooze_until FROM followup_dismissals`
     ),
+    getGoogleAuth: db.prepare(
+      `SELECT email, tokens, connected_at FROM google_auth WHERE id = 1`
+    ),
+    setGoogleAuth: db.prepare(
+      `INSERT INTO google_auth (id, email, tokens, connected_at)
+       VALUES (1, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         email = excluded.email,
+         tokens = excluded.tokens,
+         connected_at = excluded.connected_at`
+    ),
+    clearGoogleAuth: db.prepare(`DELETE FROM google_auth WHERE id = 1`),
   };
 
   return db;
@@ -262,4 +280,28 @@ export function isFollowupDismissed(chatGuid, kind, dismissedMap) {
   if (!entry) return false;
   if (entry.snoozeUntil && new Date(entry.snoozeUntil) <= new Date()) return false;
   return entry.kind === kind;
+}
+
+export function getGoogleAuth() {
+  const row = ensure().getGoogleAuth.get();
+  if (!row) return null;
+  let tokens;
+  try {
+    tokens = JSON.parse(row.tokens);
+  } catch {
+    return null;
+  }
+  return { email: row.email, tokens, connectedAt: row.connected_at };
+}
+
+export function setGoogleAuth({ email, tokens }) {
+  ensure().setGoogleAuth.run(
+    email.toLowerCase(),
+    JSON.stringify(tokens),
+    new Date().toISOString()
+  );
+}
+
+export function clearGoogleAuth() {
+  ensure().clearGoogleAuth.run();
 }

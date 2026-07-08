@@ -74,3 +74,15 @@ export function dismissFollowup(guid, kind, snoozeHours = null) {
   if (snoozeHours != null) payload.snoozeHours = snoozeHours;
   return post(`/api/chats/${encodeURIComponent(guid)}/dismiss-followup`, payload);
 }
+
+export function disconnectCalendar() {
+  return post('/api/calendar/disconnect');
+}
+
+export function getCalendarSetup() {
+  return request('/api/calendar/setup');
+}
+
+export function saveCalendarCredentials(clientId, clientSecret) {
+  return post('/api/calendar/credentials', { clientId, clientSecret });
+}

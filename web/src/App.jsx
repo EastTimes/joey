@@ -53,29 +53,52 @@ export default function App() {
     return () => clearInterval(t);
   }, [view, loadChats]);
 
+  const reloadStatus = useCallback(async () => {
+    try {
+      const s = await api.getStatus();
+      setStatus(s);
+      setServerUp(true);
+      return s;
+    } catch {
+      setServerUp(false);
+      return null;
+    }
+  }, []);
+
+  // Google Calendar OAuth callback (?calendar=connected|error)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const cal = params.get('calendar');
+    if (!cal) return;
+    const msg = params.get('message');
+    const email = params.get('email');
+    window.history.replaceState({}, '', window.location.pathname);
+    if (cal === 'connected') {
+      pushToast(`Google Calendar connected${email ? ` — ${email}` : ''}`, 'info');
+      reloadStatus();
+      loadChats(viewRef.current);
+    } else if (cal === 'error') {
+      pushToast(`Calendar connect failed — ${msg || 'unknown error'}`);
+    }
+  }, [pushToast, reloadStatus, loadChats]);
+
   // Server status: on boot, then every 15s.
   useEffect(() => {
     let gone = false;
     const load = async () => {
-      try {
-        const s = await api.getStatus();
-        if (!gone) {
-          setStatus(s);
-          setServerUp(true);
-        }
-      } catch {
-        if (!gone) setServerUp(false);
-      }
+      const s = await reloadStatus();
+      if (gone) return;
+      if (!s) gone = true;
     };
     load();
     const t = setInterval(() => {
-      if (!document.hidden) load();
+      if (!document.hidden) reloadStatus();
     }, 15000);
     return () => {
       gone = true;
       clearInterval(t);
     };
-  }, []);
+  }, [reloadStatus]);
 
   // Real-time updates: the server watches chat.db and pushes a 'change' event
   // over SSE. Refresh the chat list and nudge the open thread to refetch.
@@ -109,15 +132,16 @@ export default function App() {
     return null;
   }, [chats, activeGuid]);
 
-  // Sidebar order (also used by keyboard nav & ⌘⇧E next-selection):
-  // time-sensitive → follow-ups → the rest.
+  // Sidebar order: time-sensitive → action items → follow-ups → rest.
   const orderedGuids = useMemo(() => {
     if (!chats) return [];
     if (view === 'archived') return chats.map((c) => c.guid);
     const ts = chats.filter((c) => c.triage?.timeSensitive);
-    const fu = chats.filter((c) => c.followup && !c.triage?.timeSensitive);
+    const flagged = chats.filter((c) => c.followup && !c.triage?.timeSensitive);
+    const actions = flagged.filter((c) => c.followup?.kind === 'calendar_pending');
+    const fu = flagged.filter((c) => c.followup?.kind !== 'calendar_pending');
     const rest = chats.filter((c) => !c.triage?.timeSensitive && !c.followup);
-    return [...ts, ...fu, ...rest].map((c) => c.guid);
+    return [...ts, ...actions, ...fu, ...rest].map((c) => c.guid);
   }, [chats, view]);
 
   // Optimistically drop a row from the visible list and advance the
@@ -294,6 +318,7 @@ export default function App() {
           onUnarchive={handleUnarchive}
           onRefreshTriage={handleRefreshTriage}
           onDismissFollowup={handleDismissFollowup}
+          onStatusRefresh={reloadStatus}
           refreshing={refreshingTriage}
           status={status}
           serverUp={serverUp}

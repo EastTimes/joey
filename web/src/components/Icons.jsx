@@ -19,6 +19,16 @@ function Base({ size = 14, className = '', children, filled = false, strokeWidth
   );
 }
 
+export function CalendarIcon({ size = 12 }) {
+  return (
+    <Base size={size}>
+      <rect x="2.5" y="3.5" width="11" height="10.5" rx="1.25" />
+      <path d="M2.5 6.75h11" />
+      <path d="M5.25 2.25v2.5M10.75 2.25v2.5" />
+    </Base>
+  );
+}
+
 export function ReplyArrowIcon({ size = 12 }) {
   return (
     <Base size={size}>
