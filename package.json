@@ -10,9 +10,10 @@
     "build": "npm --prefix web run build",
     "dev:web": "npm --prefix web run dev",
     "desktop": "node scripts/launch-desktop.js",
+    "restore:native": "npm rebuild better-sqlite3",
     "install:mac": "npm run pack:mac && ditto dist/mac-arm64/Joey.app /Applications/Joey.app",
-    "pack:mac": "npm run build && electron-builder --mac --dir",
-    "dist:mac": "npm run build && electron-builder --mac"
+    "pack:mac": "npm run build && electron-builder --mac --dir && npm run restore:native",
+    "dist:mac": "npm run build && electron-builder --mac && npm run restore:native"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
