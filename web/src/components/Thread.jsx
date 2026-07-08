@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import * as api from '../api.js';
 import Composer from './Composer.jsx';
 import { dayLabel, sameDay, timeOfDay } from '../format.js';
-import { FlagIcon, ChevronUpIcon, ArchiveIcon, UnarchiveIcon } from './Icons.jsx';
+import { FlagIcon, ReplyArrowIcon, ChevronUpIcon, ArchiveIcon, UnarchiveIcon } from './Icons.jsx';
 
 const PAGE = 60;
 
@@ -151,6 +151,7 @@ export default function Thread({ chat, refreshSignal, aiAvailable, onArchiveTogg
 
   const name = chat.name || chat.chatIdentifier || chat.guid;
   const triage = chat.triage;
+  const followup = chat.followup;
   const sub = chat.isGroup
     ? `To: ${(chat.participants || []).join(', ')}`
     : [chat.chatIdentifier, chat.serviceName].filter(Boolean).join(' · ');
@@ -173,6 +174,12 @@ export default function Thread({ chat, refreshSignal, aiAvailable, onArchiveTogg
               <FlagIcon size={9} />
               <span className="th-reason">{triage.reason}</span>
               {triage.deadline && <span className="th-deadline">{triage.deadline}</span>}
+            </div>
+          )}
+          {!triage?.timeSensitive && followup && (
+            <div className="th-triage th-followup" title={followup.reason}>
+              <ReplyArrowIcon size={9} />
+              <span className="th-reason">{followup.reason}</span>
             </div>
           )}
           <button

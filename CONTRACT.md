@@ -21,6 +21,13 @@ Stack: Node 22 ESM (plain JS, no TypeScript on the server), Express, better-sqli
 | `JOEY_DRY_RUN` | unset | `1` = never invoke osascript; log the send and return `{dryRun:true}` |
 | `JOEY_DRAFT_MODEL` | `claude-opus-4-8` | Model for drafting |
 | `JOEY_TRIAGE_MODEL` | `claude-opus-4-8` | Model for triage classification |
+| `JOEY_FOLLOWUP_MODEL` | `JOEY_TRIAGE_MODEL` | Model for follow-up classification |
+| `JOEY_FOLLOWUP_MIN_HOURS` | `24` | Min hours before awaiting_reply candidate |
+| `JOEY_GC_INTRO_MIN_HOURS` | `4` | Min hours after GC intro candidate |
+| `JOEY_FOLLOWUP_CONTEXT_DAYS` | `7` | Only messages this recent are sent to follow-up AI |
+| `JOEY_GOOGLE_USER_EMAIL` | unset | Google account for calendar invite matching |
+| `JOEY_GOOGLE_CALENDAR_DIR` | `~/calendar` | OAuth `credentials.json` + `token.json` directory |
+| `JOEY_GOOGLE_CALENDAR_ID` | `primary` | Calendar ID to scan |
 | `ANTHROPIC_API_KEY` | unset | Standard SDK auth (SDK also resolves `ANTHROPIC_AUTH_TOKEN` / `ant` profiles) |
 
 ## Shared data shapes
@@ -52,6 +59,9 @@ Stack: Node 22 ESM (plain JS, no TypeScript on the server), Express, better-sqli
 
 // Triage — classification of a chat's latest incoming message
 { timeSensitive: boolean, reason: string, deadline: string|null }  // deadline: human-readable like "today 5pm", or null
+
+// Followup — outbound accountability reminder (AI-classified, cached per chat)
+{ kind: 'gc_intro'|'awaiting_reply'|'calendar_pending', reason: string, triggerDateMs: number }
 ```
 
 Message filtering (applies in chatdb.js): exclude tapbacks/reactions
@@ -80,6 +90,7 @@ export function getMessages(chatGuid, { limit = 60, beforeRowid = null } = {}) /
 export function getLastIncomingMessage(chatGuid)            // -> Msg|null (most recent isFromMe=false)
 export function getRecentSentTexts({ limit = 30 } = {})     // -> string[] my recent sent texts across all chats,
                                                             //    3..300 chars, deduped, for AI style profile
+export function isGroupStartedByMe(chatGuid)                // -> boolean (first visible msg is from me)
 ```
 Joins: `chat` ⟷ `chat_message_join` ⟷ `message`; `chat_handle_join` ⟷ `handle` for
 participants; `message.handle_id` → `handle.id` for senderId. Use prepared statements.
@@ -103,6 +114,12 @@ export function createDraft(chatGuid, text)                  // -> draftId (inte
 export function getDraft(draftId)                            // -> {id, chatGuid, text, createdAt}|null
 export function addEditPair({ chatGuid, draft, final })
 export function getEditPairs(limit = 12)                     // -> [{draft, final}] newest first
+// Follow-up cache (keyed by chat guid; stale when lastMessage.rowid changes)
+export function getFollowup(chatGuid)                        // -> {lastMessageRowid, needsFollowup, kind, reason}|null
+export function setFollowup(chatGuid, followup)
+export function getDismissedMap()                            // -> Map<chatGuid, {kind, dismissedAt, snoozeUntil}>
+export function dismissFollowup(chatGuid, kind, { snoozeHours })
+export function isFollowupDismissed(chatGuid, kind, dismissedMap) // -> boolean
 ```
 
 ### `server/imessage/send.js` — owner: send/contacts agent
@@ -135,6 +152,7 @@ export function aiAvailable()   // -> boolean (ANTHROPIC_API_KEY or ANTHROPIC_AU
 export function getClient()     // -> Anthropic singleton (zero-arg constructor) or null
 export const DRAFT_MODEL        // from JOEY_DRAFT_MODEL
 export const TRIAGE_MODEL       // from JOEY_TRIAGE_MODEL
+export const FOLLOWUP_MODEL     // from JOEY_FOLLOWUP_MODEL (defaults to TRIAGE_MODEL)
 ```
 
 ### `server/ai/draft.js` — owner: AI agent
@@ -167,6 +185,16 @@ export async function classifyBatch(items)
   reactions, FYI chatter.
 - Stable system prompt with `cache_control: {type:'ephemeral'}`
 
+### `server/ai/followups.js` — owner: AI agent
+```js
+export async function classifyFollowups(items)
+// items: [{ chatGuid, chatName, isGroup, lastDateMs, lastMessageRowid, transcript }] (≤ 15 per call)
+// -> Map<chatGuid, { needsFollowup, kind, reason, lastMessageRowid }>
+```
+- model `FOLLOWUP_MODEL`, structured JSON output
+- kinds: `gc_intro` (silent group intro), `awaiting_reply` (they ghosted you), `calendar_pending` (time agreed, no invite)
+- Pre-filtered by `server/lib/candidates.js` before API call
+
 ## HTTP API — owner: server agent (`server/index.js`, `server/routes/api.js`)
 
 All under `/api`. Chat guids in paths are URL-encoded by the client.
@@ -181,10 +209,13 @@ All under `/api`. Chat guids in paths are URL-encoded by the client.
 | `POST /api/chats/:guid/unarchive` | `{ ok }` |
 | `POST /api/chats/:guid/draft` | `{ draftId, text }` — 503 `{error}` when !aiAvailable |
 | `POST /api/triage/refresh` | `{ updated }` — classify last incoming msg of each inbox chat missing cached triage; 503 when !aiAvailable |
+| `POST /api/followups/refresh` | `{ updated, scanned }` — AI-classify follow-up candidates; 503 when !aiAvailable |
+| `POST /api/chats/:guid/dismiss-followup` | `{ kind, snoozeHours? }` → `{ ok }` |
 
-`ChatSummary = Chat & { name, archived, triage }` where `name` = displayName ||
+`ChatSummary = Chat & { name, archived, triage, followup }` where `name` = displayName ||
 contact names of participants (via resolveName) || chatIdentifier; `archived` uses the
-effective-archive rule; `triage` = cached triage of lastMessage when it's incoming, else null.
+effective-archive rule; `triage` = cached triage of lastMessage when it's incoming, else null;
+`followup` = cached follow-up when fresh and not dismissed, else null.
 
 Server also serves `web/dist` statically when present (SPA fallback to index.html).
 Errors: JSON `{ error: string }` with appropriate status; the server must not crash on a
@@ -198,7 +229,8 @@ React SPA, files: `main.jsx`, `App.jsx`, `api.js` (fetch helpers), components as
 
 Layout: left sidebar + main thread pane.
 - Sidebar sections: **Time Sensitive** (inbox chats whose `triage.timeSensitive`, with the
-  reason shown), **Inbox** (the rest), and an **Archived** view toggle at the bottom.
+  reason shown), **Follow-ups** (outbound accountability: GC intros, ghosted replies,
+  calendar invites owed), **Inbox** (the rest), and an **Archived** view toggle at the bottom.
   Chat rows: name, snippet, relative time, unread dot, hover archive/unarchive button.
   Inbox-zero state: friendly empty message when Inbox is empty.
 - Thread pane: header (name, triage badge with reason/deadline, archive button), message
@@ -208,7 +240,8 @@ Layout: left sidebar + main thread pane.
   `POST draft`, fills textarea and remembers draftId (edits keep the draftId — the server
   learns from the delta), Send button. Sending clears draftId. Show errors inline.
 - Status strip when `!aiAvailable`: "Set ANTHROPIC_API_KEY to enable AI drafting & triage."
-- A "Refresh triage" button in the sidebar header (POST /api/triage/refresh, then reload chats).
+- A "Refresh classification" button in the sidebar header (POST /api/triage/refresh +
+  /api/followups/refresh, then reload chats). Follow-up rows have a dismiss control.
 - Poll `/api/chats` every 5s, active thread every 3s. Optimistic send (append bubble immediately).
 - `encodeURIComponent` every chat guid in URLs.
 - Design: polished and distinctive, NOT generic-AI-slop (no Inter-on-white with purple

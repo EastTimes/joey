@@ -21,3 +21,4 @@ export function getClient() {
 
 export const DRAFT_MODEL = process.env.JOEY_DRAFT_MODEL || 'claude-opus-4-8';
 export const TRIAGE_MODEL = process.env.JOEY_TRIAGE_MODEL || 'claude-opus-4-8';
+export const FOLLOWUP_MODEL = process.env.JOEY_FOLLOWUP_MODEL || process.env.JOEY_TRIAGE_MODEL || 'claude-opus-4-8';

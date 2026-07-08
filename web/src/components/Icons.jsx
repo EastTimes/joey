@@ -19,6 +19,23 @@ function Base({ size = 14, className = '', children, filled = false, strokeWidth
   );
 }
 
+export function ReplyArrowIcon({ size = 12 }) {
+  return (
+    <Base size={size}>
+      <path d="M4.5 4.25 1.75 8l2.75 3.75" />
+      <path d="M1.75 8h8.5a3.25 3.25 0 0 1 0 6.5H8.5" />
+    </Base>
+  );
+}
+
+export function DismissIcon({ size = 12 }) {
+  return (
+    <Base size={size} strokeWidth={1.8}>
+      <path d="m4.25 4.25 7.5 7.5M11.75 4.25l-7.5 7.5" />
+    </Base>
+  );
+}
+
 export function FlagIcon({ size = 12 }) {
   return (
     <Base size={size} filled>

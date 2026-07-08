@@ -64,3 +64,13 @@ export function requestDraft(guid) {
 export function refreshTriage() {
   return post('/api/triage/refresh');
 }
+
+export function refreshFollowups() {
+  return post('/api/followups/refresh');
+}
+
+export function dismissFollowup(guid, kind, snoozeHours = null) {
+  const payload = { kind };
+  if (snoozeHours != null) payload.snoozeHours = snoozeHours;
+  return post(`/api/chats/${encodeURIComponent(guid)}/dismiss-followup`, payload);
+}

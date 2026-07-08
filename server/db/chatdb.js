@@ -66,6 +66,16 @@ function prepareStatements(d) {
       LIMIT @limit
     `),
 
+    firstMessages: d.prepare(`
+      SELECT ${MSG_COLS}
+      FROM chat_message_join cmj
+      JOIN message m ON m.ROWID = cmj.message_id
+      LEFT JOIN handle h ON h.ROWID = m.handle_id
+      WHERE cmj.chat_id = ? AND ${MSG_FILTER}
+      ORDER BY cmj.message_id ASC
+      LIMIT ?
+    `),
+
     chatRowidByGuid: d.prepare(`SELECT ROWID AS rowid FROM chat WHERE guid = ?`),
 
     chatByGuid: d.prepare(`
@@ -318,6 +328,18 @@ export function getLastIncomingMessage(chatGuid) {
     if (msgVisible(msg)) return msg;
   }
   return null;
+}
+
+// First substantive message in a group is almost always from whoever created it.
+export function isGroupStartedByMe(chatGuid) {
+  open();
+  const cid = chatRowid(chatGuid);
+  if (cid == null) return false;
+  for (const r of stmts.firstMessages.all(cid, 15)) {
+    const msg = rowToMsg(r);
+    if (msgVisible(msg)) return msg.isFromMe;
+  }
+  return false;
 }
 
 export function getRecentSentTexts({ limit = 30 } = {}) {

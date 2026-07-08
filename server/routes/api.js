@@ -6,6 +6,7 @@ import {
   getChat,
   getMessages,
   getRecentSentTexts,
+  isGroupStartedByMe,
 } from '../db/chatdb.js';
 import {
   archiveChat,
@@ -17,12 +18,22 @@ import {
   getDraft,
   addEditPair,
   getEditPairs,
+  getFollowup,
+  setFollowup,
+  getDismissedMap,
+  dismissFollowup,
+  isFollowupDismissed,
 } from '../db/appdb.js';
 import { sendMessage } from '../imessage/send.js';
 import { resolveName } from '../imessage/contacts.js';
 import { aiAvailable, DRAFT_MODEL } from '../ai/client.js';
 import { generateDraft } from '../ai/draft.js';
 import { classifyBatch } from '../ai/triage.js';
+import { classifyFollowups } from '../ai/followups.js';
+import { isFollowupCandidate } from '../lib/candidates.js';
+import { recentMessages } from '../lib/followupContext.js';
+import { candidateEmailsForChat, chatHasCalendarInvite } from '../lib/calendarMatch.js';
+import { getInvitedAttendeeEmails, calendarStatus, hasInvitedEmail } from '../calendar/google.js';
 import { sseHandler } from '../lib/events.js';
 
 const router = Router();
@@ -68,14 +79,39 @@ function isTriageExempt(chat) {
   return chat.isGroup || isShortCodeChat(chat);
 }
 
-function toSummary(chat, archivedMap) {
+function calendarInviteCoversChat(chat, invitedEmails) {
+  if (!invitedEmails) return false;
+  return candidateEmailsForChat(chat).some((e) => hasInvitedEmail(invitedEmails, e));
+}
+
+function activeFollowup(chat, dismissedMap, invitedEmails) {
+  const last = chat.lastMessage;
+  if (!last) return null;
+  if (chat.isGroup && isGroupStartedByMe(chat.guid)) return null;
+  const cached = getFollowup(chat.guid);
+  if (!cached || cached.lastMessageRowid !== last.rowid) return null;
+  if (!cached.needsFollowup || !cached.kind) return null;
+  if (isFollowupDismissed(chat.guid, cached.kind, dismissedMap)) return null;
+  if (cached.kind === 'calendar_pending' && calendarInviteCoversChat(chat, invitedEmails)) {
+    return null;
+  }
+  return {
+    kind: cached.kind,
+    reason: cached.reason,
+    triggerDateMs: last.dateMs,
+  };
+}
+
+function toSummary(chat, archivedMap, dismissedMap, invitedEmails) {
   const last = chat.lastMessage;
   const triageable = last && !last.isFromMe && !isTriageExempt(chat);
+  const archived = isEffectivelyArchived(chat, archivedMap);
   return {
     ...chat,
     name: chatName(chat),
-    archived: isEffectivelyArchived(chat, archivedMap),
+    archived,
     triage: triageable ? getTriage(last.guid) : null,
+    followup: archived ? null : activeFollowup(chat, dismissedMap, invitedEmails),
   };
 }
 
@@ -100,6 +136,7 @@ function withSenderName(m) {
 
 router.get('/status', wrap(async (req, res) => {
   const dbOk = chatDbOk();
+  await getInvitedAttendeeEmails();
   res.json({
     ok: true,
     aiAvailable: aiAvailable(),
@@ -107,6 +144,7 @@ router.get('/status', wrap(async (req, res) => {
     chatDbOk: dbOk,
     messageCount: dbOk ? messageCount() : 0,
     draftModel: DRAFT_MODEL,
+    calendar: calendarStatus(),
   });
 }));
 
@@ -116,7 +154,9 @@ router.get('/events', sseHandler);
 router.get('/chats', wrap(async (req, res) => {
   const filter = req.query.filter || 'inbox';
   const archivedMap = getArchivedMap();
-  let chats = listChats().map((c) => toSummary(c, archivedMap));
+  const dismissedMap = getDismissedMap();
+  const invitedEmails = await getInvitedAttendeeEmails();
+  let chats = listChats().map((c) => toSummary(c, archivedMap, dismissedMap, invitedEmails));
   if (filter === 'archived') chats = chats.filter((c) => c.archived);
   else if (filter !== 'all') chats = chats.filter((c) => !c.archived);
   res.json({ chats });
@@ -185,6 +225,94 @@ router.post('/chats/:guid/draft', wrap(async (req, res) => {
   });
   const draftId = createDraft(chat.guid, text);
   res.json({ draftId, text });
+}));
+
+router.post('/followups/refresh', wrap(async (req, res) => {
+  if (!aiAvailable()) return res.status(503).json({ error: AI_UNAVAILABLE });
+  await getInvitedAttendeeEmails({ force: true });
+  const archivedMap = getArchivedMap();
+  const items = [];
+
+  for (const chat of listChats()) {
+    if (isEffectivelyArchived(chat, archivedMap)) continue;
+    if (isShortCodeChat(chat)) continue;
+
+    const groupStartedByMe = chat.isGroup && isGroupStartedByMe(chat.guid);
+    if (groupStartedByMe) {
+      const last = chat.lastMessage;
+      if (last) {
+        setFollowup(chat.guid, {
+          lastMessageRowid: last.rowid,
+          needsFollowup: false,
+          kind: null,
+          reason: '',
+        });
+      }
+      continue;
+    }
+
+    const messages = getMessages(chat.guid, { limit: 60 }).map(withSenderName);
+    const window = recentMessages(messages);
+    if (!isFollowupCandidate(chat, window, { groupStartedByMe })) continue;
+
+    const last = chat.lastMessage;
+    if (!last) continue;
+
+    items.push({
+      chatGuid: chat.guid,
+      chat,
+      window,
+      chatName: chatName(chat),
+      isGroup: chat.isGroup,
+      groupStartedByMe,
+      lastDateMs: last.dateMs,
+      lastMessageRowid: last.rowid,
+      transcript: window
+        .map((m) => {
+          const who = m.isFromMe ? 'Me' : m.senderName || m.senderId || 'Them';
+          return `${who}: ${m.text || (m.hasAttachments ? '[attachment]' : '')}`;
+        })
+        .join('\n'),
+    });
+  }
+
+  let updated = 0;
+  if (items.length > 0) {
+    const results = await classifyFollowups(items);
+    for (const item of items) {
+      let result = results.get(item.chatGuid) || {
+        needsFollowup: false,
+        kind: null,
+        reason: '',
+        lastMessageRowid: item.lastMessageRowid,
+      };
+      if (result.kind === 'calendar_pending' && (await chatHasCalendarInvite(item.chat, item.window))) {
+        result = {
+          needsFollowup: false,
+          kind: null,
+          reason: '',
+          lastMessageRowid: item.lastMessageRowid,
+        };
+      }
+      setFollowup(item.chatGuid, result);
+      updated++;
+    }
+  }
+  res.json({ updated, scanned: items.length });
+}));
+
+router.post('/chats/:guid/dismiss-followup', wrap(async (req, res) => {
+  const { kind, snoozeHours } = req.body || {};
+  const valid = ['gc_intro', 'awaiting_reply', 'calendar_pending'];
+  if (!valid.includes(kind)) {
+    return res.status(400).json({ error: 'kind must be gc_intro, awaiting_reply, or calendar_pending' });
+  }
+  const chat = findChat(req.params.guid);
+  if (!chat) return res.status(404).json({ error: 'unknown chat' });
+  dismissFollowup(chat.guid, kind, {
+    snoozeHours: snoozeHours != null ? Number(snoozeHours) : undefined,
+  });
+  res.json({ ok: true });
 }));
 
 router.post('/triage/refresh', wrap(async (req, res) => {

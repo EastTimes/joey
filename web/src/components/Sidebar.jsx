@@ -1,6 +1,8 @@
 import { relTime, compactCount } from '../format.js';
 import {
   FlagIcon,
+  ReplyArrowIcon,
+  DismissIcon,
   ArchiveIcon,
   UnarchiveIcon,
   RefreshIcon,
@@ -19,6 +21,7 @@ export default function Sidebar({
   onArchive,
   onUnarchive,
   onRefreshTriage,
+  onDismissFollowup,
   refreshing,
   status,
   serverUp,
@@ -26,7 +29,14 @@ export default function Sidebar({
   const loading = chats === null;
   const inArchived = view === 'archived';
   const timeSensitive = !inArchived && chats ? chats.filter((c) => c.triage?.timeSensitive) : [];
-  const rest = chats ? (inArchived ? chats : chats.filter((c) => !c.triage?.timeSensitive)) : [];
+  const followups = !inArchived && chats
+    ? chats.filter((c) => c.followup && !c.triage?.timeSensitive)
+    : [];
+  const rest = chats
+    ? inArchived
+      ? chats
+      : chats.filter((c) => !c.triage?.timeSensitive && !c.followup)
+    : [];
 
   return (
     <aside className="sidebar">
@@ -55,8 +65,8 @@ export default function Sidebar({
           className="icon-btn"
           onClick={onRefreshTriage}
           disabled={refreshing}
-          title="Refresh triage — re-classify inbox chats for time sensitivity"
-          aria-label="Refresh triage"
+          title="Refresh classification — time-sensitive triage + follow-up reminders"
+          aria-label="Refresh classification"
         >
           <RefreshIcon size={15} spinning={refreshing} />
         </button>
@@ -88,6 +98,27 @@ export default function Sidebar({
                 ))}
               </>
             )}
+            {followups.length > 0 && (
+              <>
+                <div className="section-label section-fu">
+                  <ReplyArrowIcon size={10} />
+                  <span>Follow-ups</span>
+                  <span className="count">{followups.length}</span>
+                </div>
+                {followups.map((c) => (
+                  <ChatRow
+                    key={c.guid}
+                    chat={c}
+                    followup
+                    active={c.guid === activeGuid}
+                    onSelect={onSelect}
+                    onArchive={onArchive}
+                    onUnarchive={onUnarchive}
+                    onDismissFollowup={onDismissFollowup}
+                  />
+                ))}
+              </>
+            )}
             {chats && chats.length > 0 && (
               <div className="section-label">
                 <span>Inbox</span>
@@ -106,7 +137,11 @@ export default function Sidebar({
             ))}
             {!loading && chats && chats.length === 0 && !chatsError && <InboxZero />}
             {!loading && chats && chats.length > 0 && rest.length === 0 && (
-              <div className="list-note">Nothing else — just the time-sensitive chats above.</div>
+              <div className="list-note">
+                {timeSensitive.length + followups.length > 0
+                  ? 'Nothing else in the regular inbox.'
+                  : 'Nothing else — just the flagged chats above.'}
+              </div>
             )}
           </>
         )}
@@ -193,7 +228,17 @@ function Avatar({ chat, name }) {
   );
 }
 
-function ChatRow({ chat, active, timeSensitive, archivedView, onSelect, onArchive, onUnarchive }) {
+function ChatRow({
+  chat,
+  active,
+  timeSensitive,
+  followup,
+  archivedView,
+  onSelect,
+  onArchive,
+  onUnarchive,
+  onDismissFollowup,
+}) {
   const lm = chat.lastMessage;
   const snippet = lm
     ? `${lm.isFromMe ? 'You: ' : ''}${lm.text || (lm.hasAttachments ? 'Attachment' : '')}`
@@ -209,7 +254,7 @@ function ChatRow({ chat, active, timeSensitive, archivedView, onSelect, onArchiv
 
   return (
     <div
-      className={`chat-row ${active ? 'active' : ''} ${timeSensitive ? 'ts' : ''}`}
+      className={`chat-row ${active ? 'active' : ''} ${timeSensitive ? 'ts' : ''} ${followup ? 'fu' : ''}`}
       role="option"
       aria-selected={active}
       tabIndex={0}
@@ -235,8 +280,32 @@ function ChatRow({ chat, active, timeSensitive, archivedView, onSelect, onArchiv
             </span>
           </div>
         )}
+        {followup && chat.followup && (
+          <div className="row-reason row-reason-fu">
+            <ReplyArrowIcon size={9} />
+            <span>
+              {chat.followup.reason}
+              {chat.followup.triggerDateMs ? (
+                <em className="row-deadline"> · {relTime(chat.followup.triggerDateMs)}</em>
+              ) : null}
+            </span>
+          </div>
+        )}
         <div className="row-snippet">{snippet}</div>
       </div>
+      {followup && onDismissFollowup && (
+        <button
+          className="row-dismiss"
+          title="Dismiss follow-up"
+          aria-label={`Dismiss follow-up for ${name}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDismissFollowup(chat.guid, chat.followup.kind);
+          }}
+        >
+          <DismissIcon size={12} />
+        </button>
+      )}
       <button
         className="row-archive"
         title={archivedView ? `Unarchive (E or ⌘⇧E)` : `Archive (E or ⌘⇧E)`}

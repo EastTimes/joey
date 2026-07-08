@@ -7,6 +7,7 @@ import { loadContacts } from './imessage/contacts.js';
 import { chatDbOk, messageCount } from './db/chatdb.js';
 import { aiAvailable } from './ai/client.js';
 import { startWatcher } from './lib/events.js';
+import { calendarConfigured, getInvitedAttendeeEmails } from './calendar/google.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.resolve(__dirname, '..', 'web', 'dist');
@@ -94,6 +95,10 @@ async function main() {
 
   startWatcher(); // best-effort chat.db change events for /api/events
 
+  if (calendarConfigured()) {
+    getInvitedAttendeeEmails().catch(() => {});
+  }
+
   // Express 5 invokes this callback even when listen fails (error-first) —
   // only announce success when there is no error; the 'error' listener below
   // handles the failure output.
@@ -101,7 +106,8 @@ async function main() {
     if (err) return;
     console.log(
       `[joey] http://127.0.0.1:${port} chatDbOk=${dbOk} messages=${count} ` +
-      `aiAvailable=${aiAvailable()} dryRun=${process.env.JOEY_DRY_RUN === '1'}`
+      `aiAvailable=${aiAvailable()} calendar=${calendarConfigured()} ` +
+      `dryRun=${process.env.JOEY_DRY_RUN === '1'}`
     );
   });
   server.on('error', (err) => {

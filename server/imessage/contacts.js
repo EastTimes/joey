@@ -7,6 +7,8 @@ import Database from 'better-sqlite3';
 const byPhone = new Map(); // full normalized digits -> name
 const byPhoneLast10 = new Map(); // last 10 digits -> name
 const byEmail = new Map(); // lowercase email -> name
+const emailsByPhone = new Map(); // normalized digits -> Set<lowercase email>
+const emailsByPhoneLast10 = new Map();
 
 function displayName(row) {
   const name = [row.first, row.last]
@@ -26,36 +28,64 @@ function addPhone(number, name) {
   }
 }
 
+function linkPhoneEmail(phone, email) {
+  const digits = String(phone).replace(/\D/g, '');
+  if (!digits || !email) return;
+  if (!emailsByPhone.has(digits)) emailsByPhone.set(digits, new Set());
+  emailsByPhone.get(digits).add(email);
+  if (digits.length >= 10) {
+    const last10 = digits.slice(-10);
+    if (!emailsByPhoneLast10.has(last10)) emailsByPhoneLast10.set(last10, new Set());
+    emailsByPhoneLast10.get(last10).add(email);
+  }
+}
+
 function loadSource(dbPath) {
   const db = new Database(dbPath, { readonly: true, fileMustExist: true });
   try {
-    const phoneRows = db
+    const records = db
       .prepare(
-        `SELECT r.ZFIRSTNAME AS first, r.ZLASTNAME AS last, r.ZORGANIZATION AS org,
-                p.ZFULLNUMBER AS value
-         FROM ZABCDRECORD r
-         JOIN ZABCDPHONENUMBER p ON p.ZOWNER = r.Z_PK
-         WHERE p.ZFULLNUMBER IS NOT NULL`
+        `SELECT r.Z_PK AS pk, r.ZFIRSTNAME AS first, r.ZLASTNAME AS last, r.ZORGANIZATION AS org
+         FROM ZABCDRECORD r`
       )
       .all();
-    for (const row of phoneRows) {
-      const name = displayName(row);
-      if (name) addPhone(row.value, name);
+
+    const phonesByPk = new Map();
+    for (const row of db
+      .prepare(
+        `SELECT p.ZOWNER AS pk, p.ZFULLNUMBER AS value
+         FROM ZABCDPHONENUMBER p WHERE p.ZFULLNUMBER IS NOT NULL`
+      )
+      .all()) {
+      if (!phonesByPk.has(row.pk)) phonesByPk.set(row.pk, []);
+      phonesByPk.get(row.pk).push(row.value);
     }
 
-    const emailRows = db
+    const emailsByPk = new Map();
+    for (const row of db
       .prepare(
-        `SELECT r.ZFIRSTNAME AS first, r.ZLASTNAME AS last, r.ZORGANIZATION AS org,
-                e.ZADDRESS AS value
-         FROM ZABCDRECORD r
-         JOIN ZABCDEMAILADDRESS e ON e.ZOWNER = r.Z_PK
-         WHERE e.ZADDRESS IS NOT NULL`
+        `SELECT e.ZOWNER AS pk, e.ZADDRESS AS value
+         FROM ZABCDEMAILADDRESS e WHERE e.ZADDRESS IS NOT NULL`
       )
-      .all();
-    for (const row of emailRows) {
-      const name = displayName(row);
+      .all()) {
       const email = String(row.value).trim().toLowerCase();
-      if (name && email && !byEmail.has(email)) byEmail.set(email, name);
+      if (!email) continue;
+      if (!emailsByPk.has(row.pk)) emailsByPk.set(row.pk, []);
+      emailsByPk.get(row.pk).push(email);
+    }
+
+    for (const rec of records) {
+      const name = displayName(rec);
+      const emails = emailsByPk.get(rec.pk) || [];
+      const phones = phonesByPk.get(rec.pk) || [];
+
+      for (const phone of phones) {
+        if (name) addPhone(phone, name);
+        for (const email of emails) linkPhoneEmail(phone, email);
+      }
+      for (const email of emails) {
+        if (name && !byEmail.has(email)) byEmail.set(email, name);
+      }
     }
   } finally {
     db.close();
@@ -66,6 +96,8 @@ export function loadContacts() {
   byPhone.clear();
   byPhoneLast10.clear();
   byEmail.clear();
+  emailsByPhone.clear();
+  emailsByPhoneLast10.clear();
   try {
     const sourcesDir = path.join(
       os.homedir(),
@@ -87,6 +119,19 @@ export function loadContacts() {
     console.warn(`[contacts] AddressBook unavailable: ${err.message}`);
   }
   return { phones: byPhone.size, emails: byEmail.size };
+}
+
+/** Emails from AddressBook linked to this phone handle (empty for email handles). */
+export function emailsForHandle(handleId) {
+  if (!handleId) return [];
+  const id = String(handleId).trim();
+  if (!id || id.includes('@')) return id.includes('@') ? [id.toLowerCase()] : [];
+  const digits = id.replace(/\D/g, '');
+  if (!digits) return [];
+  const set =
+    emailsByPhone.get(digits) ??
+    (digits.length >= 10 ? emailsByPhoneLast10.get(digits.slice(-10)) : null);
+  return set ? [...set] : [];
 }
 
 export function resolveName(handleId) {

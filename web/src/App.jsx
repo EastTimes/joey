@@ -110,13 +110,14 @@ export default function App() {
   }, [chats, activeGuid]);
 
   // Sidebar order (also used by keyboard nav & ⌘⇧E next-selection):
-  // time-sensitive first, then the rest.
+  // time-sensitive → follow-ups → the rest.
   const orderedGuids = useMemo(() => {
     if (!chats) return [];
     if (view === 'archived') return chats.map((c) => c.guid);
     const ts = chats.filter((c) => c.triage?.timeSensitive);
-    const rest = chats.filter((c) => !c.triage?.timeSensitive);
-    return [...ts, ...rest].map((c) => c.guid);
+    const fu = chats.filter((c) => c.followup && !c.triage?.timeSensitive);
+    const rest = chats.filter((c) => !c.triage?.timeSensitive && !c.followup);
+    return [...ts, ...fu, ...rest].map((c) => c.guid);
   }, [chats, view]);
 
   // Optimistically drop a row from the visible list and advance the
@@ -187,16 +188,39 @@ export default function App() {
     if (refreshingTriage) return;
     setRefreshingTriage(true);
     try {
-      const res = await api.refreshTriage();
+      const [triageRes, followupRes] = await Promise.all([
+        api.refreshTriage(),
+        status?.aiAvailable ? api.refreshFollowups() : Promise.resolve({ updated: 0 }),
+      ]);
       await loadChats(view);
-      const n = res?.updated ?? 0;
-      pushToast(n > 0 ? `Triage refreshed — ${n} chat${n === 1 ? '' : 's'} classified` : 'Triage is up to date', 'info');
+      const tn = triageRes?.updated ?? 0;
+      const fn = followupRes?.updated ?? 0;
+      const parts = [];
+      if (tn > 0) parts.push(`${tn} time-sensitive`);
+      if (fn > 0) parts.push(`${fn} follow-up${fn === 1 ? '' : 's'}`);
+      pushToast(
+        parts.length > 0 ? `Classified — ${parts.join(', ')}` : 'Inbox classification is up to date',
+        'info'
+      );
     } catch (err) {
-      pushToast(`Triage failed — ${err.message}`);
+      pushToast(`Classification failed — ${err.message}`);
     } finally {
       setRefreshingTriage(false);
     }
-  }, [refreshingTriage, view, loadChats, pushToast]);
+  }, [refreshingTriage, view, loadChats, pushToast, status?.aiAvailable]);
+
+  const handleDismissFollowup = useCallback(
+    async (guid, kind) => {
+      try {
+        await api.dismissFollowup(guid, kind);
+        await loadChats(viewRef.current);
+        pushToast('Follow-up dismissed', 'info');
+      } catch (err) {
+        pushToast(`Couldn't dismiss — ${err.message}`);
+      }
+    },
+    [loadChats, pushToast]
+  );
 
   const handleSent = useCallback(() => loadChats(view), [view, loadChats]);
 
@@ -269,6 +293,7 @@ export default function App() {
           onArchive={handleArchive}
           onUnarchive={handleUnarchive}
           onRefreshTriage={handleRefreshTriage}
+          onDismissFollowup={handleDismissFollowup}
           refreshing={refreshingTriage}
           status={status}
           serverUp={serverUp}
