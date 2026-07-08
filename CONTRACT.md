@@ -25,10 +25,17 @@ Stack: Node 22 ESM (plain JS, no TypeScript on the server), Express, better-sqli
 | `JOEY_FOLLOWUP_MIN_HOURS` | `24` | Min hours before awaiting_reply candidate |
 | `JOEY_GC_INTRO_MIN_HOURS` | `4` | Min hours after GC intro candidate |
 | `JOEY_FOLLOWUP_CONTEXT_DAYS` | `7` | Only messages this recent are sent to follow-up AI |
-| `JOEY_GOOGLE_USER_EMAIL` | unset | Google account for calendar invite matching |
-| `JOEY_GOOGLE_CALENDAR_DIR` | `~/calendar` | OAuth `credentials.json` + `token.json` directory |
-| `JOEY_GOOGLE_CALENDAR_ID` | `primary` | Calendar ID to scan |
+| `JOEY_GOOGLE_CLIENT_ID` | unset | Google OAuth client ID (enables sidebar sign-in) |
+| `JOEY_GOOGLE_CLIENT_SECRET` | unset | Google OAuth client secret (server-side only) |
+| `JOEY_GOOGLE_CALENDAR_ID` | `primary` | Calendar ID to scan for sent invites |
 | `ANTHROPIC_API_KEY` | unset | Standard SDK auth (SDK also resolves `ANTHROPIC_AUTH_TOKEN` / `ant` profiles) |
+
+### Optional: Google Calendar (invite verification)
+
+Suppresses false `calendar_pending` follow-ups once an invite is already on your calendar.
+One-time host setup: create a [Google OAuth client](https://console.cloud.google.com/apis/credentials),
+enable Calendar API, add redirect URI `http://127.0.0.1:3456/api/calendar/callback`, set
+`JOEY_GOOGLE_CLIENT_ID` / `JOEY_GOOGLE_CLIENT_SECRET`, then sign in via the Joey sidebar.
 
 ## Shared data shapes
 
