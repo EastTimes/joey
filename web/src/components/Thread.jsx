@@ -2,7 +2,15 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import * as api from '../api.js';
 import Composer from './Composer.jsx';
 import { dayLabel, sameDay, timeOfDay } from '../format.js';
-import { FlagIcon, CalendarIcon, ReplyArrowIcon, ChevronUpIcon, ArchiveIcon, UnarchiveIcon } from './Icons.jsx';
+import {
+  FlagIcon,
+  CalendarIcon,
+  ReplyArrowIcon,
+  ChevronUpIcon,
+  ArchiveIcon,
+  UnarchiveIcon,
+  ContactEditIcon,
+} from './Icons.jsx';
 
 const PAGE = 60;
 
@@ -13,7 +21,16 @@ function mergeMessages(prev, incoming) {
   return [...map.values()].sort((a, b) => a.rowid - b.rowid);
 }
 
-export default function Thread({ chat, refreshSignal, aiAvailable, onArchiveToggle, onOpenDm, onSent, pushToast }) {
+export default function Thread({
+  chat,
+  refreshSignal,
+  aiAvailable,
+  onArchiveToggle,
+  onOpenDm,
+  onEditContact,
+  onSent,
+  pushToast,
+}) {
   const guid = chat.guid;
   const [messages, setMessages] = useState(null); // null = loading
   const [pending, setPending] = useState([]); // optimistic sends
@@ -171,14 +188,23 @@ export default function Thread({ chat, refreshSignal, aiAvailable, onArchiveTogg
           {chat.isGroup && participants.length > 0 && (
             <div className="th-people" title={sub}>
               {participants.map((p) => (
-                <button
-                  key={p.id}
-                  className="th-person"
-                  onClick={() => onOpenDm(p)}
-                  title={`Message ${p.name || p.id}`}
-                >
-                  {p.name || p.id}
-                </button>
+                <span className="th-person-wrap" key={p.id}>
+                  <button
+                    className="th-person"
+                    onClick={() => onOpenDm(p)}
+                    title={`Message ${p.name || p.id}`}
+                  >
+                    {p.name || p.id}
+                  </button>
+                  <button
+                    className="th-person-edit"
+                    onClick={() => onEditContact({ target: p.id, name: p.name })}
+                    title={`Edit contact ${p.name || p.id}`}
+                    aria-label={`Edit contact ${p.name || p.id}`}
+                  >
+                    <ContactEditIcon size={11} />
+                  </button>
+                </span>
               ))}
             </div>
           )}
@@ -266,6 +292,7 @@ export default function Thread({ chat, refreshSignal, aiAvailable, onArchiveTogg
               showSender={row.showSender}
               cont={row.cont}
               onOpenDm={onOpenDm}
+              onEditContact={onEditContact}
             />
           );
         })}
@@ -276,7 +303,7 @@ export default function Thread({ chat, refreshSignal, aiAvailable, onArchiveTogg
   );
 }
 
-function Bubble({ msg, showSender, cont, onOpenDm }) {
+function Bubble({ msg, showSender, cont, onOpenDm, onEditContact }) {
   const mine = msg.isFromMe;
   const sms = msg.service !== 'iMessage';
   const reactions = msg.reactions || [];
@@ -284,13 +311,23 @@ function Bubble({ msg, showSender, cont, onOpenDm }) {
     <div className={`msg-row ${mine ? 'mine' : 'theirs'} ${cont ? 'cont' : ''} ${reactions.length ? 'has-rx' : ''}`}>
       <div className="msg-stack">
         {showSender && (
-          <button
-            className="msg-sender"
-            onClick={() => onOpenDm({ id: msg.senderId, name: msg.senderName || msg.senderId || 'Unknown' })}
-            title={`Message ${msg.senderName || msg.senderId || 'Unknown'}`}
-          >
-            {msg.senderName || msg.senderId || 'Unknown'}
-          </button>
+          <div className="msg-sender-row">
+            <button
+              className="msg-sender"
+              onClick={() => onOpenDm({ id: msg.senderId, name: msg.senderName || msg.senderId || 'Unknown' })}
+              title={`Message ${msg.senderName || msg.senderId || 'Unknown'}`}
+            >
+              {msg.senderName || msg.senderId || 'Unknown'}
+            </button>
+            <button
+              className="msg-sender-edit"
+              onClick={() => onEditContact({ target: msg.senderId, name: msg.senderName || msg.senderId })}
+              title={`Edit contact ${msg.senderName || msg.senderId || 'Unknown'}`}
+              aria-label={`Edit contact ${msg.senderName || msg.senderId || 'Unknown'}`}
+            >
+              <ContactEditIcon size={10} />
+            </button>
+          </div>
         )}
         <div className="bubble-wrap">
           <div className={`bubble ${mine ? (sms ? 'b-sms' : 'b-mine') : 'b-theirs'}`}>

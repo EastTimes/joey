@@ -32,7 +32,9 @@ export default function App() {
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState(null);
+  const [searchRefresh, setSearchRefresh] = useState(0);
   const [compose, setCompose] = useState(null);
+  const [contactSheet, setContactSheet] = useState(null);
   const lastActiveChat = useRef(null);
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -107,7 +109,7 @@ export default function App() {
       gone = true;
       clearTimeout(t);
     };
-  }, [searchQuery]);
+  }, [searchQuery, searchRefresh]);
 
   const reloadStatus = useCallback(async () => {
     try {
@@ -366,6 +368,18 @@ export default function App() {
     [loadChats, openResolvedChat, pushToast]
   );
 
+  const handleEditContact = useCallback(({ contact = null, target = '', name = '' } = {}) => {
+    setContactSheet({ contact, target, name });
+  }, []);
+
+  const handleContactSaved = useCallback(async () => {
+    setContactSheet(null);
+    pushToast('Contact saved', 'info');
+    await reloadStatus();
+    await loadChats(viewRef.current);
+    setSearchRefresh((n) => n + 1);
+  }, [loadChats, pushToast, reloadStatus]);
+
   // ⌘⇧E (Ctrl+Shift+E off-Mac): archive the selected chat — unarchive when in
   // the archived view. Capture phase so it wins even while the composer has focus.
   useEffect(() => {
@@ -437,6 +451,7 @@ export default function App() {
           onRefreshTriage={handleRefreshTriage}
           onDismissFollowup={handleDismissFollowup}
           onComposeNew={handleComposeNew}
+          onEditContact={handleEditContact}
           onStatusRefresh={reloadStatus}
           refreshing={refreshingTriage}
           status={status}
@@ -459,6 +474,7 @@ export default function App() {
               aiAvailable={!!status?.aiAvailable}
               onArchiveToggle={handleArchiveToggle}
               onOpenDm={handleOpenDm}
+              onEditContact={handleEditContact}
               onSent={handleSent}
               pushToast={pushToast}
             />
@@ -473,6 +489,14 @@ export default function App() {
           displayName={compose.name}
           onClose={() => setCompose(null)}
           onSent={handleComposeSent}
+          onEditContact={handleEditContact}
+        />
+      )}
+      {contactSheet && (
+        <ContactSheet
+          seed={contactSheet}
+          onClose={() => setContactSheet(null)}
+          onSaved={handleContactSaved}
         />
       )}
       <Toasts toasts={toasts} dismiss={dismissToast} />
@@ -480,7 +504,105 @@ export default function App() {
   );
 }
 
-function ComposeSheet({ initialTarget, displayName, onClose, onSent }) {
+function splitName(value) {
+  const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return { firstName: parts[0] || '', lastName: '' };
+  return { firstName: parts.slice(0, -1).join(' '), lastName: parts[parts.length - 1] };
+}
+
+function ContactSheet({ seed, onClose, onSaved }) {
+  const contact = seed.contact;
+  const nameParts = splitName(contact?.name || seed.name || '');
+  const initialTarget = String(seed.target || '').trim();
+  const [firstName, setFirstName] = useState(nameParts.firstName);
+  const [lastName, setLastName] = useState(nameParts.lastName);
+  const [organization, setOrganization] = useState(contact?.organization || '');
+  const [phone, setPhone] = useState(
+    contact?.phones?.[0] || (!initialTarget.includes('@') ? initialTarget : '')
+  );
+  const [email, setEmail] = useState(
+    contact?.emails?.[0] || (initialTarget.includes('@') ? initialTarget : '')
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const firstRef = useRef(null);
+
+  useEffect(() => {
+    firstRef.current?.focus();
+  }, []);
+
+  const canSave = !!(firstName.trim() || lastName.trim() || organization.trim()) && !saving;
+
+  const save = async () => {
+    if (!canSave) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await api.saveContact({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        organization: organization.trim(),
+        phones: phone.trim() ? [phone.trim()] : [],
+        emails: email.trim() ? [email.trim()] : [],
+      });
+      onSaved();
+    } catch (err) {
+      setError(err.message || 'Contact save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'Escape') onClose();
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      save();
+    }
+  };
+
+  return (
+    <div className="compose-backdrop" role="presentation" onMouseDown={onClose}>
+      <div className="compose-sheet contact-sheet" role="dialog" aria-modal="true" aria-label="Edit contact" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="compose-head">
+          <h2>{contact ? 'Edit Contact' : 'Add Contact'}</h2>
+          <button className="compose-close" onClick={onClose} aria-label="Close">×</button>
+        </div>
+        <div className="contact-grid">
+          <label>
+            <span>First</span>
+            <input ref={firstRef} value={firstName} onChange={(e) => setFirstName(e.target.value)} onKeyDown={onKeyDown} />
+          </label>
+          <label>
+            <span>Last</span>
+            <input value={lastName} onChange={(e) => setLastName(e.target.value)} onKeyDown={onKeyDown} />
+          </label>
+          <label className="wide">
+            <span>Company</span>
+            <input value={organization} onChange={(e) => setOrganization(e.target.value)} onKeyDown={onKeyDown} />
+          </label>
+          <label className="wide">
+            <span>Phone</span>
+            <input value={phone} onChange={(e) => setPhone(e.target.value)} onKeyDown={onKeyDown} placeholder="+1 555 123 4567" />
+          </label>
+          <label className="wide">
+            <span>Email</span>
+            <input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={onKeyDown} placeholder="name@example.com" />
+          </label>
+        </div>
+        {error && <div className="compose-error">{error}</div>}
+        <div className="compose-actions">
+          <button className="compose-secondary" onClick={onClose}>Cancel</button>
+          <button className="compose-primary" onClick={save} disabled={!canSave}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ComposeSheet({ initialTarget, displayName, onClose, onSent, onEditContact }) {
   const [target, setTarget] = useState(initialTarget || '');
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -536,6 +658,15 @@ function ComposeSheet({ initialTarget, displayName, onClose, onSent }) {
           />
         </label>
         {displayName && <div className="compose-recipient">{displayName}</div>}
+        {target.trim() && (
+          <button
+            className="compose-contact-link"
+            onClick={() => onEditContact({ target: target.trim(), name: displayName || target.trim() })}
+            type="button"
+          >
+            Add or edit contact
+          </button>
+        )}
         <textarea
           ref={textRef}
           className="compose-text"

@@ -137,6 +137,16 @@ export function PersonIcon({ size = 20 }) {
   );
 }
 
+export function ContactEditIcon({ size = 14 }) {
+  return (
+    <Base size={size}>
+      <path d="M6.5 7.25a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4z" />
+      <path d="M2.5 13.25c.35-2.25 1.85-3.55 4-3.55 1.05 0 1.95.32 2.62.92" />
+      <path d="m10.05 13.25 3.25-3.25 1.2 1.2-3.25 3.25H10.05z" />
+    </Base>
+  );
+}
+
 // Two-person silhouette for group chats.
 export function PeopleIcon({ size = 20 }) {
   return (

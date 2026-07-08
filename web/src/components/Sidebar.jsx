@@ -12,6 +12,7 @@ import {
   BackIcon,
   PersonIcon,
   PeopleIcon,
+  ContactEditIcon,
 } from './Icons.jsx';
 
 const IS_DESKTOP = /Electron/i.test(navigator.userAgent || '');
@@ -28,6 +29,7 @@ export default function Sidebar({
   onRefreshTriage,
   onDismissFollowup,
   onComposeNew,
+  onEditContact,
   onStatusRefresh,
   refreshing,
   status,
@@ -141,6 +143,7 @@ export default function Sidebar({
                 query={searchQuery}
                 active={result.chat?.guid === activeGuid}
                 onSelect={onSelect}
+                onEditContact={onEditContact}
               />
             ))}
           </>
@@ -354,7 +357,7 @@ function HighlightedText({ text, query }) {
   );
 }
 
-function SearchResultRow({ result, query, active, onSelect }) {
+function SearchResultRow({ result, query, active, onSelect, onEditContact }) {
   const { chat, message, contact, type } = result;
   const isContact = type === 'contact';
   const name = chat?.name || chat?.chatIdentifier || chat?.guid || '';
@@ -413,6 +416,19 @@ function SearchResultRow({ result, query, active, onSelect }) {
           <HighlightedText text={snippet} query={query} />
         </div>
       </div>
+      {isContact && (
+        <button
+          className="row-contact-edit"
+          title="Edit contact"
+          aria-label={`Edit contact ${title}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onEditContact({ contact, target: contact?.phones?.[0] || contact?.emails?.[0] || '' });
+          }}
+        >
+          <ContactEditIcon size={13} />
+        </button>
+      )}
     </div>
   );
 }

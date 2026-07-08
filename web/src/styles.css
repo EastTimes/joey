@@ -600,6 +600,36 @@ code {
   background: rgba(255, 255, 255, 0.35);
 }
 
+.row-contact-edit {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 22px;
+  height: 22px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--control);
+  color: var(--text-2);
+  transition: background var(--t), color var(--t);
+}
+
+.chat-row:hover .row-contact-edit,
+.row-contact-edit:focus-visible {
+  display: inline-flex;
+}
+
+.row-contact-edit:hover {
+  color: var(--blue);
+  background: var(--hairline-strong);
+}
+
+.chat-row.active .row-contact-edit {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
 .row-archive {
   position: absolute;
   right: 6px;
@@ -938,7 +968,36 @@ code {
   text-overflow: ellipsis;
 }
 
+.th-person-wrap {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 148px;
+  border-radius: 999px;
+  background: var(--control);
+}
+
+.th-person-wrap .th-person {
+  background: transparent;
+}
+
 .th-person:hover {
+  color: var(--blue);
+  background: var(--hover);
+}
+
+.th-person-edit {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 2px;
+  border-radius: 50%;
+  color: var(--text-3);
+}
+
+.th-person-edit:hover {
   color: var(--blue);
   background: var(--hover);
 }
@@ -1106,16 +1165,43 @@ code {
   align-items: flex-end;
 }
 
-.msg-sender {
+.msg-sender-row {
   align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 5px 0 1px 12px;
+}
+
+.msg-sender {
   font-size: 11px;
   color: var(--text-2);
-  margin: 5px 0 1px 12px;
   padding: 0;
   text-align: left;
 }
 
 .msg-sender:hover {
+  color: var(--blue);
+}
+
+.msg-sender-edit {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity var(--t), background var(--t), color var(--t);
+}
+
+.msg-sender-row:hover .msg-sender-edit {
+  opacity: 1;
+}
+
+.msg-sender-edit:hover {
+  background: var(--hover);
   color: var(--blue);
 }
 
@@ -1348,6 +1434,18 @@ code {
   color: var(--text-3);
 }
 
+.compose-contact-link {
+  display: inline-flex;
+  margin: 0 14px 2px 56px;
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.compose-contact-link:hover {
+  text-decoration: underline;
+}
+
 .compose-text {
   display: block;
   width: calc(100% - 28px);
@@ -1404,6 +1502,49 @@ code {
 
 .compose-primary:disabled {
   opacity: 0.45;
+}
+
+.contact-sheet {
+  width: min(500px, 100%);
+}
+
+.contact-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 14px;
+}
+
+.contact-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.contact-grid label.wide {
+  grid-column: 1 / -1;
+}
+
+.contact-grid input {
+  height: 30px;
+  min-width: 0;
+  padding: 0 9px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 7px;
+  background: var(--pill-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.contact-grid input:focus {
+  border-color: color-mix(in srgb, var(--blue) 45%, var(--hairline-strong));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 10%, transparent);
 }
 
 /* ---------- composer ---------- */

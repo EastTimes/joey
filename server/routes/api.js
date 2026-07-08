@@ -34,9 +34,11 @@ import { sendDirectMessage, sendMessage } from '../imessage/send.js';
 import {
   contactsStatus,
   exportContactsCsv,
+  loadContacts,
   resolveName,
   searchContacts,
 } from '../imessage/contacts.js';
+import { upsertContact } from '../imessage/contactWrite.js';
 import {
   aiAvailable,
   classificationProvider,
@@ -177,6 +179,24 @@ function validRecipient(target) {
   return value.replace(/\D/g, '').length >= 7;
 }
 
+function normalizeContactPayload(body) {
+  const firstName = String(body?.firstName || '').trim();
+  const lastName = String(body?.lastName || '').trim();
+  const organization = String(body?.organization || '').trim();
+  const phones = Array.isArray(body?.phones) ? body.phones.map((p) => String(p || '').trim()).filter(Boolean) : [];
+  const emails = Array.isArray(body?.emails) ? body.emails.map((e) => String(e || '').trim()).filter(Boolean) : [];
+  if (!firstName && !lastName && !organization) {
+    throw new Error('name or organization required');
+  }
+  if (phones.some((phone) => phone.replace(/\D/g, '').length < 7)) {
+    throw new Error('phone numbers must have at least 7 digits');
+  }
+  if (emails.some((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+    throw new Error('invalid email address');
+  }
+  return { firstName, lastName, organization, phones, emails };
+}
+
 function findChat(guid) {
   try {
     return getChat(guid);
@@ -210,6 +230,7 @@ router.get('/status', wrap(async (req, res) => {
       messageSearch: true,
       contactSearch: true,
       directCompose: true,
+      contactEditing: true,
     },
     contacts: contactsStatus(),
     draftModel: DRAFT_MODEL,
@@ -228,6 +249,18 @@ router.get('/contacts/export.csv', wrap(async (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename=\"joey-contacts.csv\"');
   res.send(csv);
+}));
+
+router.post('/contacts/upsert', wrap(async (req, res) => {
+  let contact;
+  try {
+    contact = normalizeContactPayload(req.body || {});
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  const result = await upsertContact(contact);
+  const contacts = loadContacts();
+  res.json({ ...result, contacts });
 }));
 
 // Google Calendar OAuth — browser sign-in, no manual token.json editing.

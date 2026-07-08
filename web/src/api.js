@@ -63,6 +63,10 @@ export function resolveRecipient(target) {
   return request(`/api/recipient/resolve?${params}`);
 }
 
+export function saveContact(contact) {
+  return post('/api/contacts/upsert', contact);
+}
+
 export function archiveChat(guid) {
   return post(`/api/chats/${encodeURIComponent(guid)}/archive`);
 }
