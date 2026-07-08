@@ -3,16 +3,49 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "main": "electron/main.cjs",
   "description": "A productivity-first iMessage client for Mac — reads chat.db locally, sends via AppleScript",
   "scripts": {
     "start": "node server/index.js",
     "build": "npm --prefix web run build",
-    "dev:web": "npm --prefix web run dev"
+    "dev:web": "npm --prefix web run dev",
+    "desktop": "node scripts/launch-desktop.js",
+    "install:mac": "npm run pack:mac && ditto dist/mac-arm64/Joey.app /Applications/Joey.app",
+    "pack:mac": "npm run build && electron-builder --mac --dir",
+    "dist:mac": "npm run build && electron-builder --mac"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
     "better-sqlite3": "^12.11.1",
     "express": "^5.2.1",
     "googleapis": "^173.0.0"
+  },
+  "devDependencies": {
+    "electron": "^39.2.6",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.joey.imessage",
+    "productName": "Joey",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "files": [
+      "electron/**/*",
+      "server/**/*",
+      "web/dist/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "identity": "Joey Local Code Signing",
+      "hardenedRuntime": false,
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    }
   }
 }

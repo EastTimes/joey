@@ -7,6 +7,15 @@ import Toasts from './components/Toasts.jsx';
 let toastSeq = 0;
 
 const IS_MAC = /Mac|iP(hone|ad|od)/.test(navigator.platform || '');
+const POWER_ITEMS_KEY = 'joey.showPowerItems';
+
+function getStoredPowerItems() {
+  try {
+    return window.localStorage.getItem(POWER_ITEMS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 export default function App() {
   const [status, setStatus] = useState(null);
@@ -18,9 +27,18 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [refreshingTriage, setRefreshingTriage] = useState(false);
   const [changeTick, setChangeTick] = useState(0); // bumped on SSE 'change'
+  const [showPowerItems, setShowPowerItems] = useState(getStoredPowerItems);
   const lastActiveChat = useRef(null);
   const viewRef = useRef(view);
   viewRef.current = view;
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(POWER_ITEMS_KEY, showPowerItems ? '1' : '0');
+    } catch {
+      // best-effort preference only
+    }
+  }, [showPowerItems]);
 
   const pushToast = useCallback((text, kind = 'error', action = null) => {
     const id = ++toastSeq;
@@ -132,17 +150,21 @@ export default function App() {
     return null;
   }, [chats, activeGuid]);
 
-  // Sidebar order: time-sensitive → action items → follow-ups → rest.
+  // Sidebar order: time-sensitive → optional power sections → rest.
   const orderedGuids = useMemo(() => {
     if (!chats) return [];
     if (view === 'archived') return chats.map((c) => c.guid);
     const ts = chats.filter((c) => c.triage?.timeSensitive);
+    if (!showPowerItems) {
+      const rest = chats.filter((c) => !c.triage?.timeSensitive);
+      return [...ts, ...rest].map((c) => c.guid);
+    }
     const flagged = chats.filter((c) => c.followup && !c.triage?.timeSensitive);
     const actions = flagged.filter((c) => c.followup?.kind === 'calendar_pending');
     const fu = flagged.filter((c) => c.followup?.kind !== 'calendar_pending');
     const rest = chats.filter((c) => !c.triage?.timeSensitive && !c.followup);
     return [...ts, ...actions, ...fu, ...rest].map((c) => c.guid);
-  }, [chats, view]);
+  }, [chats, view, showPowerItems]);
 
   // Optimistically drop a row from the visible list and advance the
   // selection: the row after it, the previous one if it was last, cleared
@@ -322,6 +344,8 @@ export default function App() {
           refreshing={refreshingTriage}
           status={status}
           serverUp={serverUp}
+          showPowerItems={showPowerItems}
+          setShowPowerItems={setShowPowerItems}
         />
         <main className="thread-pane">
           {activeChat ? (

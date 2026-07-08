@@ -1,4 +1,11 @@
-import { aiAvailable, getClient, TRIAGE_MODEL } from './client.js';
+import {
+  aiAvailable,
+  classificationProvider,
+  generateGeminiJson,
+  getClient,
+  TRIAGE_MODEL,
+  GEMINI_MODEL,
+} from './client.js';
 
 const CHUNK_SIZE = 25;
 
@@ -60,40 +67,55 @@ function apiError(err) {
   return new Error(`Anthropic API error: ${status}${err?.message || err}`);
 }
 
+async function classifyWithGemini(chunk) {
+  const parsed = await generateGeminiJson({
+    model: GEMINI_MODEL,
+    system: `${TRIAGE_SYSTEM} JSON shape: {"results":[{"index":0,"time_sensitive":false,"reason":"short reason","deadline":null}]}`,
+    prompt: formatChunk(chunk),
+  });
+  return parsed.results || [];
+}
+
+async function classifyWithAnthropic(client, chunk) {
+  let resp;
+  try {
+    resp = await client.messages.create({
+      model: TRIAGE_MODEL,
+      max_tokens: 2048,
+      system: [{ type: 'text', text: TRIAGE_SYSTEM, cache_control: { type: 'ephemeral' } }],
+      messages: [{ role: 'user', content: formatChunk(chunk) }],
+      output_config: { format: { type: 'json_schema', schema: TRIAGE_SCHEMA } },
+    });
+  } catch (err) {
+    throw apiError(err);
+  }
+
+  if (resp.stop_reason === 'refusal') throw new Error('triage refused');
+  const textBlock = resp.content.find((b) => b.type === 'text');
+  if (!textBlock) throw new Error('triage returned no text');
+
+  try {
+    return JSON.parse(textBlock.text).results || [];
+  } catch {
+    throw new Error('triage returned invalid JSON');
+  }
+}
+
 export async function classifyBatch(items) {
   const results = new Map();
   if (!items || items.length === 0) return results;
   if (!aiAvailable()) throw new Error('AI unavailable');
-  const client = getClient();
+  const provider = classificationProvider('triage');
+  const client = provider === 'anthropic' ? getClient() : null;
+  if (provider === 'anthropic' && !client) throw new Error('Anthropic unavailable');
 
   for (let start = 0; start < items.length; start += CHUNK_SIZE) {
     const chunk = items.slice(start, start + CHUNK_SIZE);
+    const classified = provider === 'gemini'
+      ? await classifyWithGemini(chunk)
+      : await classifyWithAnthropic(client, chunk);
 
-    let resp;
-    try {
-      resp = await client.messages.create({
-        model: TRIAGE_MODEL,
-        max_tokens: 2048,
-        system: [{ type: 'text', text: TRIAGE_SYSTEM, cache_control: { type: 'ephemeral' } }],
-        messages: [{ role: 'user', content: formatChunk(chunk) }],
-        output_config: { format: { type: 'json_schema', schema: TRIAGE_SCHEMA } },
-      });
-    } catch (err) {
-      throw apiError(err);
-    }
-
-    if (resp.stop_reason === 'refusal') throw new Error('triage refused');
-    const textBlock = resp.content.find((b) => b.type === 'text');
-    if (!textBlock) throw new Error('triage returned no text');
-
-    let parsed;
-    try {
-      parsed = JSON.parse(textBlock.text);
-    } catch {
-      throw new Error('triage returned invalid JSON');
-    }
-
-    for (const r of parsed.results || []) {
+    for (const r of classified) {
       const item = chunk[r.index];
       if (!item) continue;
       results.set(item.guid, {

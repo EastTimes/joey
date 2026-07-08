@@ -1,7 +1,8 @@
+import './lib/env.js';
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import apiRouter from './routes/api.js';
 import { loadContacts } from './imessage/contacts.js';
 import { chatDbOk, messageCount } from './db/chatdb.js';
@@ -79,9 +80,10 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err.message || 'internal error' });
 });
 
-const port = Number(process.env.JOEY_PORT || 3456);
+export async function startServer(options = {}) {
+  const port = Number(options.port || process.env.JOEY_PORT || 3456);
+  const exitOnError = options.exitOnError !== false;
 
-async function main() {
   await loadContacts();
 
   let dbOk = false;
@@ -93,35 +95,45 @@ async function main() {
     // chat.db unreachable; status stays false
   }
 
-  startWatcher(); // best-effort chat.db change events for /api/events
+  const watcher = startWatcher(); // best-effort chat.db change events for /api/events
 
   if (calendarConfigured()) {
     getInvitedAttendeeEmails().catch(() => {});
   }
 
-  // Express 5 invokes this callback even when listen fails (error-first) —
-  // only announce success when there is no error; the 'error' listener below
-  // handles the failure output.
-  const server = app.listen(port, '127.0.0.1', (err) => {
-    if (err) return;
-    console.log(
-      `[joey] http://127.0.0.1:${port} chatDbOk=${dbOk} messages=${count} ` +
-      `aiAvailable=${aiAvailable()} calendar=${calendarConfigured()} ` +
-      `dryRun=${process.env.JOEY_DRY_RUN === '1'}`
-    );
-  });
-  server.on('error', (err) => {
-    if (err && err.code === 'EADDRINUSE') {
-      console.error(
-        `[joey] port ${port} is already in use — is Joey already running? (set JOEY_PORT to use another port)`
+  return await new Promise((resolve, reject) => {
+    // Express 5 invokes this callback even when listen fails (error-first) —
+    // only announce success when there is no error; the 'error' listener below
+    // handles the failure output.
+    const server = app.listen(port, '127.0.0.1', (err) => {
+      if (err) return;
+      const url = `http://127.0.0.1:${port}`;
+      console.log(
+        `[joey] ${url} chatDbOk=${dbOk} messages=${count} ` +
+        `aiAvailable=${aiAvailable()} calendar=${calendarConfigured()} ` +
+        `dryRun=${process.env.JOEY_DRY_RUN === '1'}`
       );
-      process.exit(1);
-    }
-    throw err; // other listen errors keep the default (crash) behavior
+      resolve({ server, watcher, url, port });
+    });
+    server.on('error', (err) => {
+      if (err && err.code === 'EADDRINUSE') {
+        console.error(
+          `[joey] port ${port} is already in use — is Joey already running? (set JOEY_PORT to use another port)`
+        );
+        if (exitOnError) process.exit(1);
+      }
+      reject(err);
+    });
   });
 }
 
-main().catch((err) => {
-  console.error('[joey] failed to start:', err?.message || err);
-  process.exit(1);
-});
+async function main() {
+  await startServer();
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
+  main().catch((err) => {
+    console.error('[joey] failed to start:', err?.message || err);
+    process.exit(1);
+  });
+}

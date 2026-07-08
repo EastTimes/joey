@@ -13,6 +13,8 @@ import {
   PeopleIcon,
 } from './Icons.jsx';
 
+const IS_DESKTOP = /Electron/i.test(navigator.userAgent || '');
+
 export default function Sidebar({
   chats,
   chatsError,
@@ -28,6 +30,8 @@ export default function Sidebar({
   refreshing,
   status,
   serverUp,
+  showPowerItems,
+  setShowPowerItems,
 }) {
   const loading = chats === null;
   const inArchived = view === 'archived';
@@ -40,7 +44,7 @@ export default function Sidebar({
   const rest = chats
     ? inArchived
       ? chats
-      : chats.filter((c) => !c.triage?.timeSensitive && !c.followup)
+      : chats.filter((c) => !c.triage?.timeSensitive && (!showPowerItems || !c.followup))
     : [];
 
   return (
@@ -52,7 +56,8 @@ export default function Sidebar({
       )}
       {serverUp && status && !status.chatDbOk && (
         <div className="banner banner-err" role="alert">
-          Can't read chat.db — grant this terminal Full Disk Access, then restart the server.
+          Can't read chat.db — grant {IS_DESKTOP ? 'Joey.app' : 'this terminal'} Full Disk Access, then restart Joey.
+          {status.chatDbError ? ` (${status.chatDbError})` : ''}
         </div>
       )}
       {serverUp && status && !status.aiAvailable && (
@@ -104,7 +109,7 @@ export default function Sidebar({
                 ))}
               </>
             )}
-            {actionItems.length > 0 && (
+            {showPowerItems && actionItems.length > 0 && (
               <>
                 <div className="section-label section-action">
                   <CalendarIcon size={10} />
@@ -125,7 +130,7 @@ export default function Sidebar({
                 ))}
               </>
             )}
-            {followups.length > 0 && (
+            {showPowerItems && followups.length > 0 && (
               <>
                 <div className="section-label section-fu">
                   <ReplyArrowIcon size={10} />
@@ -165,7 +170,7 @@ export default function Sidebar({
             {!loading && chats && chats.length === 0 && !chatsError && <InboxZero />}
             {!loading && chats && chats.length > 0 && rest.length === 0 && (
               <div className="list-note">
-                {timeSensitive.length + actionItems.length + followups.length > 0
+                {timeSensitive.length + (showPowerItems ? actionItems.length + followups.length : 0) > 0
                   ? 'Nothing else in the regular inbox.'
                   : 'Nothing else — just the flagged chats above.'}
               </div>
@@ -198,6 +203,17 @@ export default function Sidebar({
 
       <footer className="sidebar-foot">
         <CalendarConnect status={status} onConnected={onStatusRefresh} />
+        {!inArchived && (
+          <label className="power-toggle">
+            <input
+              type="checkbox"
+              checked={showPowerItems}
+              onChange={(e) => setShowPowerItems(e.target.checked)}
+            />
+            <span className="power-toggle-track" aria-hidden="true" />
+            <span className="power-toggle-text">Power items</span>
+          </label>
+        )}
         <div className="sidebar-foot-row">
           <button className="view-toggle" onClick={() => setView(inArchived ? 'inbox' : 'archived')}>
             {inArchived ? (

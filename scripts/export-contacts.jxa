@@ -1,0 +1,91 @@
+ObjC.import('Foundation');
+
+function text(value) {
+  if (value === undefined || value === null) return '';
+  if (value instanceof Date) return value.toISOString();
+  return String(value);
+}
+
+function csvCell(value) {
+  const s = Array.isArray(value) ? value.filter(Boolean).join('; ') : text(value);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function propsList(person, key, formatter) {
+  try {
+    return person[key]().map((item) => formatter(item.properties()));
+  } catch {
+    return [];
+  }
+}
+
+function writeFile(filePath, contents) {
+  const ns = $.NSString.alloc.initWithUTF8String(contents);
+  const ok = ns.writeToFileAtomicallyEncodingError(filePath, true, $.NSUTF8StringEncoding, null);
+  if (!ok) throw new Error(`Could not write ${filePath}`);
+}
+
+function run(argv) {
+  const csvPath = argv[0] || 'joey-contacts.csv';
+  const vcfPath = argv[1] || 'joey-contacts.vcf';
+  const includeVcards = argv.includes('--vcf');
+  const Contacts = Application('Contacts');
+  const people = Contacts.people();
+
+  const header = [
+    'id',
+    'name',
+    'first_name',
+    'middle_name',
+    'last_name',
+    'nickname',
+    'organization',
+    'job_title',
+    'department',
+    'phones',
+    'emails',
+    'addresses',
+    'urls',
+    'note',
+    'created_at',
+    'modified_at',
+  ];
+  const lines = [header.join(',')];
+  const vcards = [];
+
+  for (const person of people) {
+    const p = person.properties();
+    const phones = propsList(person, 'phones', (x) => `${x.label || 'phone'}: ${x.value || ''}`);
+    const emails = propsList(person, 'emails', (x) => `${x.label || 'email'}: ${x.value || ''}`);
+    const urls = propsList(person, 'urls', (x) => `${x.label || 'url'}: ${x.value || ''}`);
+    const addresses = propsList(person, 'addresses', (x) => {
+      const parts = [x.street, x.city, x.state, x.zip, x.country].filter(Boolean).join(', ');
+      return `${x.label || 'address'}: ${parts}`;
+    });
+
+    lines.push([
+      p.id,
+      p.name,
+      p.firstName,
+      p.middleName,
+      p.lastName,
+      p.nickname,
+      p.organization,
+      p.jobTitle,
+      p.department,
+      phones,
+      emails,
+      addresses,
+      urls,
+      p.note,
+      p.creationDate,
+      p.modificationDate,
+    ].map(csvCell).join(','));
+
+    if (includeVcards && p.vcard) vcards.push(String(p.vcard).trim());
+  }
+
+  writeFile(csvPath, `${lines.join('\n')}\n`);
+  if (includeVcards) writeFile(vcfPath, `${vcards.join('\n')}\n`);
+  return `Exported ${people.length} contacts${includeVcards ? ' and vCards' : ''}`;
+}

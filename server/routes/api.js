@@ -4,6 +4,7 @@ import path from 'node:path';
 import { Router } from 'express';
 import {
   chatDbOk,
+  chatDbError,
   messageCount,
   listChats,
   getChat,
@@ -28,8 +29,16 @@ import {
   isFollowupDismissed,
 } from '../db/appdb.js';
 import { sendMessage } from '../imessage/send.js';
-import { resolveName } from '../imessage/contacts.js';
-import { aiAvailable, DRAFT_MODEL } from '../ai/client.js';
+import { contactsStatus, exportContactsCsv, resolveName } from '../imessage/contacts.js';
+import {
+  aiAvailable,
+  classificationProvider,
+  DRAFT_MODEL,
+  FOLLOWUP_MODEL,
+  GEMINI_FALLBACK_MODEL,
+  GEMINI_MODEL,
+  TRIAGE_MODEL,
+} from '../ai/client.js';
 import { generateDraft } from '../ai/draft.js';
 import { classifyBatch } from '../ai/triage.js';
 import { classifyFollowups } from '../ai/followups.js';
@@ -173,10 +182,25 @@ router.get('/status', wrap(async (req, res) => {
     aiAvailable: aiAvailable(),
     dryRun: isDryRun(),
     chatDbOk: dbOk,
+    chatDbError: dbOk ? null : chatDbError(),
     messageCount: dbOk ? messageCount() : 0,
+    contacts: contactsStatus(),
     draftModel: DRAFT_MODEL,
+    triageProvider: classificationProvider('triage'),
+    triageModel: classificationProvider('triage') === 'gemini' ? GEMINI_MODEL : TRIAGE_MODEL,
+    triageFallbackModel: classificationProvider('triage') === 'gemini' ? GEMINI_FALLBACK_MODEL : null,
+    followupProvider: classificationProvider('followup'),
+    followupModel: classificationProvider('followup') === 'gemini' ? GEMINI_MODEL : FOLLOWUP_MODEL,
+    followupFallbackModel: classificationProvider('followup') === 'gemini' ? GEMINI_FALLBACK_MODEL : null,
     calendar: calendarStatus(),
   });
+}));
+
+router.get('/contacts/export.csv', wrap(async (req, res) => {
+  const { csv } = exportContactsCsv();
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename=\"joey-contacts.csv\"');
+  res.send(csv);
 }));
 
 // Google Calendar OAuth — browser sign-in, no manual token.json editing.

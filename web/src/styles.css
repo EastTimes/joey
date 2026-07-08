@@ -687,6 +687,62 @@ code {
   margin-left: auto;
 }
 
+.power-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: fit-content;
+  padding: 2px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.power-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.power-toggle-track {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--control);
+  border: 1px solid var(--hairline-strong);
+  flex: 0 0 auto;
+  transition: background var(--t), border-color var(--t);
+}
+
+.power-toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-3);
+  transition: transform var(--t), background var(--t);
+}
+
+.power-toggle input:checked + .power-toggle-track {
+  background: color-mix(in srgb, var(--blue) 18%, var(--control));
+  border-color: color-mix(in srgb, var(--blue) 42%, var(--hairline-strong));
+}
+
+.power-toggle input:checked + .power-toggle-track::after {
+  transform: translateX(12px);
+  background: var(--blue);
+}
+
+.power-toggle:hover .power-toggle-text {
+  color: var(--text);
+}
+
 .view-toggle {
   display: inline-flex;
   align-items: center;

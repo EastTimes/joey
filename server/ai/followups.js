@@ -1,4 +1,11 @@
-import { aiAvailable, getClient, FOLLOWUP_MODEL } from './client.js';
+import {
+  aiAvailable,
+  classificationProvider,
+  generateGeminiJson,
+  getClient,
+  FOLLOWUP_MODEL,
+  GEMINI_MODEL,
+} from './client.js';
 import { followupContextDays } from '../lib/followupContext.js';
 
 const CHUNK_SIZE = 15; // smaller chunks — each item carries a transcript
@@ -71,40 +78,55 @@ function apiError(err) {
   return new Error(`Anthropic API error: ${status}${err?.message || err}`);
 }
 
+async function classifyWithGemini(chunk) {
+  const parsed = await generateGeminiJson({
+    model: GEMINI_MODEL,
+    system: `${FOLLOWUP_SYSTEM} JSON shape: {"results":[{"index":0,"needs_followup":false,"kind":null,"reason":"short reason"}]}`,
+    prompt: formatChunk(chunk),
+  });
+  return parsed.results || [];
+}
+
+async function classifyWithAnthropic(client, chunk) {
+  let resp;
+  try {
+    resp = await client.messages.create({
+      model: FOLLOWUP_MODEL,
+      max_tokens: 2048,
+      system: [{ type: 'text', text: FOLLOWUP_SYSTEM, cache_control: { type: 'ephemeral' } }],
+      messages: [{ role: 'user', content: formatChunk(chunk) }],
+      output_config: { format: { type: 'json_schema', schema: FOLLOWUP_SCHEMA } },
+    });
+  } catch (err) {
+    throw apiError(err);
+  }
+
+  if (resp.stop_reason === 'refusal') throw new Error('followup classification refused');
+  const textBlock = resp.content.find((b) => b.type === 'text');
+  if (!textBlock) throw new Error('followup classification returned no text');
+
+  try {
+    return JSON.parse(textBlock.text).results || [];
+  } catch {
+    throw new Error('followup classification returned invalid JSON');
+  }
+}
+
 export async function classifyFollowups(items) {
   const results = new Map();
   if (!items || items.length === 0) return results;
   if (!aiAvailable()) throw new Error('AI unavailable');
-  const client = getClient();
+  const provider = classificationProvider('followup');
+  const client = provider === 'anthropic' ? getClient() : null;
+  if (provider === 'anthropic' && !client) throw new Error('Anthropic unavailable');
 
   for (let start = 0; start < items.length; start += CHUNK_SIZE) {
     const chunk = items.slice(start, start + CHUNK_SIZE);
+    const classified = provider === 'gemini'
+      ? await classifyWithGemini(chunk)
+      : await classifyWithAnthropic(client, chunk);
 
-    let resp;
-    try {
-      resp = await client.messages.create({
-        model: FOLLOWUP_MODEL,
-        max_tokens: 2048,
-        system: [{ type: 'text', text: FOLLOWUP_SYSTEM, cache_control: { type: 'ephemeral' } }],
-        messages: [{ role: 'user', content: formatChunk(chunk) }],
-        output_config: { format: { type: 'json_schema', schema: FOLLOWUP_SCHEMA } },
-      });
-    } catch (err) {
-      throw apiError(err);
-    }
-
-    if (resp.stop_reason === 'refusal') throw new Error('followup classification refused');
-    const textBlock = resp.content.find((b) => b.type === 'text');
-    if (!textBlock) throw new Error('followup classification returned no text');
-
-    let parsed;
-    try {
-      parsed = JSON.parse(textBlock.text);
-    } catch {
-      throw new Error('followup classification returned invalid JSON');
-    }
-
-    for (const r of parsed.results || []) {
+    for (const r of classified) {
       const item = chunk[r.index];
       if (!item) continue;
       const kind = r.needs_followup && VALID_KINDS.has(r.kind) ? r.kind : null;

@@ -225,6 +225,16 @@ export function chatDbOk() {
   }
 }
 
+export function chatDbError() {
+  try {
+    open();
+    stmts.messageCount.get();
+    return null;
+  } catch (err) {
+    return err?.message || String(err);
+  }
+}
+
 export function messageCount() {
   open();
   return stmts.messageCount.get().n;

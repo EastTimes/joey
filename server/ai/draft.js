@@ -1,4 +1,4 @@
-import { aiAvailable, getClient, DRAFT_MODEL } from './client.js';
+import { anthropicAvailable, getClient, DRAFT_MODEL } from './client.js';
 
 const STABLE_INSTRUCTIONS = [
   "You draft the user's next text message reply in an iMessage conversation.",
@@ -60,7 +60,7 @@ function thinkingConfig(model) {
 }
 
 export async function generateDraft({ chatName, isGroup, messages, styleExamples, editPairs }) {
-  if (!aiAvailable()) throw new Error('AI unavailable');
+  if (!anthropicAvailable()) throw new Error('Anthropic unavailable');
   const client = getClient();
 
   let resp;
