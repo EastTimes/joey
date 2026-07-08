@@ -177,7 +177,7 @@ export default function App() {
   // (e.g. the chat just got archived out of the current filter).
   const activeChat = useMemo(() => {
     const found =
-      (searchResults || []).find((r) => r.chat.guid === activeGuid)?.chat ||
+      (searchResults || []).find((r) => r.chat?.guid === activeGuid)?.chat ||
       (chats || []).find((c) => c.guid === activeGuid);
     if (found) {
       lastActiveChat.current = found;
@@ -192,7 +192,7 @@ export default function App() {
   // Sidebar order: time-sensitive → optional power sections → rest.
   const orderedGuids = useMemo(() => {
     if (searchActive) {
-      return [...new Set(searchResults.map((r) => r.chat.guid))];
+      return [...new Set(searchResults.map((r) => r.chat?.guid).filter(Boolean))];
     }
     if (!chats) return [];
     if (view === 'archived') return chats.map((c) => c.guid);

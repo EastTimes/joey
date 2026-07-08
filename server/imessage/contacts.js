@@ -9,6 +9,7 @@ const byPhoneLast10 = new Map(); // last 10 digits -> name
 const byEmail = new Map(); // lowercase email -> name
 const emailsByPhone = new Map(); // normalized digits -> Set<lowercase email>
 const emailsByPhoneLast10 = new Map();
+const contactIndex = [];
 let lastStats = { phones: 0, emails: 0, sources: 0, error: null };
 
 function addressBookPaths() {
@@ -38,8 +39,12 @@ function displayName(row) {
   return name || (row.org || '').trim() || null;
 }
 
+function normalizedDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
 function addPhone(number, name) {
-  const digits = String(number).replace(/\D/g, '');
+  const digits = normalizedDigits(number);
   if (!digits) return;
   if (!byPhone.has(digits)) byPhone.set(digits, name);
   if (digits.length >= 10) {
@@ -49,7 +54,7 @@ function addPhone(number, name) {
 }
 
 function linkPhoneEmail(phone, email) {
-  const digits = String(phone).replace(/\D/g, '');
+  const digits = normalizedDigits(phone);
   if (!digits || !email) return;
   if (!emailsByPhone.has(digits)) emailsByPhone.set(digits, new Set());
   emailsByPhone.get(digits).add(email);
@@ -60,7 +65,28 @@ function linkPhoneEmail(phone, email) {
   }
 }
 
-function loadSource(dbPath) {
+function addContactToIndex({ source, recordId, name, organization, phones, emails }) {
+  if (!name && !organization && phones.length === 0 && emails.length === 0) return;
+  const uniquePhones = [...new Set(phones.map((p) => String(p || '').trim()).filter(Boolean))];
+  const uniqueEmails = [...new Set(emails.map((e) => String(e || '').trim().toLowerCase()).filter(Boolean))];
+  contactIndex.push({
+    source,
+    recordId,
+    name: name || organization || uniqueEmails[0] || uniquePhones[0] || '',
+    organization: organization || '',
+    phones: uniquePhones,
+    emails: uniqueEmails,
+    searchText: [
+      name,
+      organization,
+      ...uniquePhones,
+      ...uniquePhones.map(normalizedDigits),
+      ...uniqueEmails,
+    ].filter(Boolean).join(' ').toLowerCase(),
+  });
+}
+
+function loadSource(dbPath, source = 'AddressBook') {
   const db = new Database(dbPath, { readonly: true, fileMustExist: true });
   try {
     const records = db
@@ -96,8 +122,18 @@ function loadSource(dbPath) {
 
     for (const rec of records) {
       const name = displayName(rec);
+      const organization = (rec.org || '').trim();
       const emails = emailsByPk.get(rec.pk) || [];
       const phones = phonesByPk.get(rec.pk) || [];
+
+      addContactToIndex({
+        source,
+        recordId: rec.pk,
+        name,
+        organization,
+        phones,
+        emails,
+      });
 
       for (const phone of phones) {
         if (name) addPhone(phone, name);
@@ -199,13 +235,14 @@ export function loadContacts() {
   byEmail.clear();
   emailsByPhone.clear();
   emailsByPhoneLast10.clear();
+  contactIndex.length = 0;
   let sources = 0;
   let error = null;
 
   try {
     for (const { label, dbPath } of addressBookPaths()) {
       try {
-        loadSource(dbPath);
+        loadSource(dbPath, label);
         sources += 1;
       } catch (err) {
         error = err.message;
@@ -223,6 +260,53 @@ export function loadContacts() {
 
 export function contactsStatus() {
   return lastStats;
+}
+
+export function searchContacts(query, { limit = 12 } = {}) {
+  const q = String(query || '').trim().toLowerCase();
+  if (q.length < 2) return [];
+  const digits = normalizedDigits(q);
+  const seen = new Set();
+  const matches = [];
+
+  for (const contact of contactIndex) {
+    const name = contact.name.toLowerCase();
+    const org = contact.organization.toLowerCase();
+    const phoneMatch = contact.phones.find((p) => {
+      const phone = String(p).toLowerCase();
+      const phoneDigits = normalizedDigits(phone);
+      return phone.includes(q) || (digits.length >= 2 && phoneDigits.includes(digits));
+    });
+    const emailMatch = contact.emails.find((e) => e.toLowerCase().includes(q));
+
+    let score = null;
+    let match = null;
+    if (name.startsWith(q)) {
+      score = 0;
+      match = contact.name;
+    } else if (name.includes(q)) {
+      score = 1;
+      match = contact.name;
+    } else if (phoneMatch || emailMatch) {
+      score = 2;
+      match = phoneMatch || emailMatch;
+    } else if (org.includes(q)) {
+      score = 3;
+      match = contact.organization;
+    } else if (contact.searchText.includes(q)) {
+      score = 4;
+      match = contact.name;
+    }
+    if (score == null) continue;
+
+    const key = `${contact.name}|${contact.phones.join(';')}|${contact.emails.join(';')}`.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    matches.push({ ...contact, match, score });
+  }
+
+  matches.sort((a, b) => a.score - b.score || a.name.localeCompare(b.name));
+  return matches.slice(0, limit).map(({ searchText, score, ...contact }) => contact);
 }
 
 /** Emails from AddressBook linked to this phone handle (empty for email handles). */

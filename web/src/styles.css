@@ -379,6 +379,15 @@ code {
   background: var(--hover);
 }
 
+.chat-row.disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.chat-row.disabled:hover {
+  background: transparent;
+}
+
 .chat-row.active,
 .chat-row.active:hover {
   background: var(--blue);
@@ -504,6 +513,15 @@ code {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.contact-result .search-meta {
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.contact-result.disabled .search-meta {
+  color: var(--text-3);
 }
 
 .search-snippet mark {

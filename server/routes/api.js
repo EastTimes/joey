@@ -10,6 +10,7 @@ import {
   getChat,
   getMessages,
   searchMessages,
+  chatsForHandles,
   getRecentSentTexts,
   isGroupStartedByMe,
 } from '../db/chatdb.js';
@@ -30,7 +31,12 @@ import {
   isFollowupDismissed,
 } from '../db/appdb.js';
 import { sendMessage } from '../imessage/send.js';
-import { contactsStatus, exportContactsCsv, resolveName } from '../imessage/contacts.js';
+import {
+  contactsStatus,
+  exportContactsCsv,
+  resolveName,
+  searchContacts,
+} from '../imessage/contacts.js';
 import {
   aiAvailable,
   classificationProvider,
@@ -291,10 +297,22 @@ router.get('/search', wrap(async (req, res) => {
   const archivedMap = getArchivedMap();
   const dismissedMap = getDismissedMap();
   const invitedEmails = await getInvitedAttendeeEmails();
-  const results = searchMessages({ query: q, limit }).map(({ chat, message }) => ({
+  const contactResults = searchContacts(q, { limit: 12 }).map((contact) => {
+    const chats = chatsForHandles([...contact.phones, ...contact.emails], { limit: 1 });
+    const chat = chats[0] ? toSummary(chats[0], archivedMap, dismissedMap, invitedEmails) : null;
+    return {
+      type: 'contact',
+      contact,
+      chat,
+      message: null,
+    };
+  });
+  const messageResults = searchMessages({ query: q, limit }).map(({ chat, message }) => ({
+    type: 'message',
     chat: toSummary(chat, archivedMap, dismissedMap, invitedEmails),
     message: withSenderName(message),
   }));
+  const results = [...contactResults, ...messageResults].slice(0, limit);
   res.json({ results });
 }));
 

@@ -151,6 +151,17 @@ function prepareStatements(d) {
       ORDER BY m.ROWID DESC
       LIMIT @scanLimit
     `),
+
+    chatRowsForHandleLike: d.prepare(`
+      SELECT DISTINCT c.ROWID AS chatRowid, c.guid, c.chat_identifier AS chatIdentifier,
+             c.service_name AS serviceName, c.display_name AS displayName, c.style
+      FROM chat_handle_join chj
+      JOIN handle h ON h.ROWID = chj.handle_id
+      JOIN chat c ON c.ROWID = chj.chat_id
+      WHERE h.id LIKE ?
+      ORDER BY c.ROWID DESC
+      LIMIT ?
+    `),
   };
 }
 
@@ -174,6 +185,19 @@ function rowToMsg(r) {
     service: r.service || 'iMessage',
     hasAttachments: !!r.cache_has_attachments,
     reactions: [], // filled in by attachReactions (getMessages pages only)
+  };
+}
+
+function rowToChat(c) {
+  return {
+    guid: c.guid,
+    chatIdentifier: c.chatIdentifier || '',
+    serviceName: c.serviceName || '',
+    displayName: c.displayName || '',
+    isGroup: c.style === 43,
+    participants: stmts.participants.all(c.chatRowid).map((p) => p.id),
+    lastMessage: lastVisibleMessage(c.chatRowid),
+    unreadCount: stmts.unreadForChat.get(c.chatRowid).n,
   };
 }
 
@@ -279,18 +303,10 @@ export function listChats({ limit = 300 } = {}) {
   for (const u of stmts.unreadByChat.all()) unread.set(u.chatId, u.n);
 
   const chats = rows.map((c) => {
-    const lastMessage = lastVisibleMessage(c.chatRowid);
-    return {
-      guid: c.guid,
-      chatIdentifier: c.chatIdentifier || '',
-      serviceName: c.serviceName || '',
-      displayName: c.displayName || '',
-      isGroup: c.style === 43,
-      participants: stmts.participants.all(c.chatRowid).map((p) => p.id),
-      lastMessage,
-      unreadCount: unread.get(c.chatRowid) || 0,
-      _activity: lastMessage ? lastMessage.dateMs : 0,
-    };
+    const chat = rowToChat(c);
+    chat.unreadCount = unread.get(c.chatRowid) || 0;
+    chat._activity = chat.lastMessage ? chat.lastMessage.dateMs : 0;
+    return chat;
   });
 
   // Raw activity order can be skewed by filtered rows (tapbacks, renames);
@@ -311,16 +327,7 @@ export function getChat(chatGuid) {
   open();
   const c = stmts.chatByGuid.get(chatGuid);
   if (!c) return null;
-  return {
-    guid: c.guid,
-    chatIdentifier: c.chatIdentifier || '',
-    serviceName: c.serviceName || '',
-    displayName: c.displayName || '',
-    isGroup: c.style === 43,
-    participants: stmts.participants.all(c.chatRowid).map((p) => p.id),
-    lastMessage: lastVisibleMessage(c.chatRowid),
-    unreadCount: stmts.unreadForChat.get(c.chatRowid).n,
-  };
+  return rowToChat(c);
 }
 
 export function getMessages(chatGuid, { limit = 60, beforeRowid = null } = {}) {
@@ -398,20 +405,83 @@ export function searchMessages({ query, limit = 50, scanLimit = 25000 } = {}) {
     if (seen.has(message.guid)) continue;
     seen.add(message.guid);
 
-    const chat = {
+    const chat = rowToChat({
+      chatRowid: row.chatRowid,
       guid: row.chatGuid,
-      chatIdentifier: row.chatIdentifier || '',
-      serviceName: row.serviceName || '',
-      displayName: row.displayName || '',
-      isGroup: row.style === 43,
-      participants: stmts.participants.all(row.chatRowid).map((p) => p.id),
-      lastMessage: lastVisibleMessage(row.chatRowid),
-      unreadCount: stmts.unreadForChat.get(row.chatRowid).n,
-    };
+      chatIdentifier: row.chatIdentifier,
+      serviceName: row.serviceName,
+      displayName: row.displayName,
+      style: row.style,
+    });
 
     results.push({ chat, message });
     if (results.length >= limit) break;
   }
 
   return results;
+}
+
+function handleCandidates(handles) {
+  const out = new Set();
+  for (const handle of handles || []) {
+    const raw = String(handle || '').trim();
+    if (!raw) continue;
+    out.add(raw.toLowerCase());
+    const digits = raw.replace(/\D/g, '');
+    if (!digits) continue;
+    out.add(digits);
+    out.add(`+${digits}`);
+    if (digits.length === 10) out.add(`+1${digits}`);
+    if (digits.length === 11 && digits.startsWith('1')) out.add(`+${digits}`);
+  }
+  return [...out];
+}
+
+function last10Candidates(handles) {
+  const out = new Set();
+  for (const handle of handles || []) {
+    const digits = String(handle || '').replace(/\D/g, '');
+    if (digits.length >= 10) out.add(digits.slice(-10));
+  }
+  return [...out];
+}
+
+export function chatsForHandles(handles, { limit = 8 } = {}) {
+  open();
+  const exact = handleCandidates(handles);
+  const queryLimit = Math.max(limit * 4, 20);
+  const byGuid = new Map();
+
+  if (exact.length > 0) {
+    const placeholders = exact.map(() => '?').join(',');
+    const stmt = db.prepare(`
+      SELECT DISTINCT c.ROWID AS chatRowid, c.guid, c.chat_identifier AS chatIdentifier,
+             c.service_name AS serviceName, c.display_name AS displayName, c.style
+      FROM chat_handle_join chj
+      JOIN handle h ON h.ROWID = chj.handle_id
+      JOIN chat c ON c.ROWID = chj.chat_id
+      WHERE LOWER(h.id) IN (${placeholders})
+      ORDER BY c.ROWID DESC
+      LIMIT ?
+    `);
+    for (const row of stmt.all(...exact, queryLimit)) {
+      byGuid.set(row.guid, rowToChat(row));
+    }
+  }
+
+  if (byGuid.size < limit) {
+    for (const last10 of last10Candidates(handles)) {
+      for (const row of stmts.chatRowsForHandleLike.all(`%${last10}`, queryLimit)) {
+        if (!byGuid.has(row.guid)) byGuid.set(row.guid, rowToChat(row));
+        if (byGuid.size >= limit) break;
+      }
+      if (byGuid.size >= limit) break;
+    }
+  }
+
+  return [...byGuid.values()].sort((a, b) => {
+    const ad = a.lastMessage?.dateMs || 0;
+    const bd = b.lastMessage?.dateMs || 0;
+    return bd - ad;
+  }).slice(0, limit);
 }

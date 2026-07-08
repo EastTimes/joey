@@ -122,10 +122,10 @@ export default function Sidebar({
             )}
             {searchResults.map((result) => (
               <SearchResultRow
-                key={result.message.guid}
+                key={result.message?.guid || `${result.type}:${result.contact?.source}:${result.contact?.recordId}`}
                 result={result}
                 query={searchQuery}
-                active={result.chat.guid === activeGuid}
+                active={result.chat?.guid === activeGuid}
                 onSelect={onSelect}
               />
             ))}
@@ -341,12 +341,30 @@ function HighlightedText({ text, query }) {
 }
 
 function SearchResultRow({ result, query, active, onSelect }) {
-  const { chat, message } = result;
-  const name = chat.name || chat.chatIdentifier || chat.guid;
-  const sender = message.isFromMe ? 'You' : message.senderName || message.senderId || '';
-  const snippet = searchSnippet(message.text, query);
+  const { chat, message, contact, type } = result;
+  const isContact = type === 'contact';
+  const name = chat?.name || chat?.chatIdentifier || chat?.guid || '';
+  const contactName = contact?.name || name;
+  const title = isContact ? contactName : name;
+  const sender = message?.isFromMe ? 'You' : message?.senderName || message?.senderId || '';
+  const contactDetail = contact
+    ? contact.match || contact.phones[0] || contact.emails[0] || contact.organization || ''
+    : '';
+  const meta = isContact
+    ? chat
+      ? `Saved Contact${contactDetail ? ` • ${contactDetail}` : ''}`
+      : `Saved Contact${contactDetail ? ` • ${contactDetail}` : ''} • No conversation`
+    : sender;
+  const snippet = isContact
+    ? chat?.lastMessage
+      ? `${chat.lastMessage.isFromMe ? 'You: ' : ''}${chat.lastMessage.text || (chat.lastMessage.hasAttachments ? 'Attachment' : '')}`
+      : contact?.emails[0] || contact?.phones[0] || ''
+    : searchSnippet(message.text, query);
+  const timeMs = isContact ? chat?.lastMessage?.dateMs : message.dateMs;
+  const canOpen = !!chat;
 
   const handleKey = (e) => {
+    if (!canOpen) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       onSelect(chat.guid);
@@ -355,21 +373,28 @@ function SearchResultRow({ result, query, active, onSelect }) {
 
   return (
     <div
-      className={`chat-row search-result ${active ? 'active' : ''}`}
+      className={`chat-row search-result ${isContact ? 'contact-result' : ''} ${canOpen ? '' : 'disabled'} ${active ? 'active' : ''}`}
       role="option"
       aria-selected={active}
+      aria-disabled={!canOpen}
       tabIndex={0}
-      onClick={() => onSelect(chat.guid)}
+      onClick={() => {
+        if (canOpen) onSelect(chat.guid);
+      }}
       onKeyDown={handleKey}
     >
       <span className="unread-dot off" />
-      <Avatar chat={chat} name={name} />
+      <Avatar chat={chat || { isGroup: false, guid: contact?.recordId ? String(contact.recordId) : title }} name={title} />
       <div className="row-main">
         <div className="row-top">
-          <span className="row-name">{name}</span>
-          <span className="row-time">{relTime(message.dateMs)}</span>
+          <span className="row-name">
+            {isContact ? <HighlightedText text={title} query={query} /> : title}
+          </span>
+          <span className="row-time">{timeMs ? relTime(timeMs) : ''}</span>
         </div>
-        <div className="search-meta">{sender}</div>
+        <div className="search-meta">
+          <HighlightedText text={meta} query={query} />
+        </div>
         <div className="row-snippet search-snippet">
           <HighlightedText text={snippet} query={query} />
         </div>
