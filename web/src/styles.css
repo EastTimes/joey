@@ -246,6 +246,55 @@ code {
   opacity: 0.45;
 }
 
+.search-wrap {
+  position: relative;
+  margin: 0 12px 8px;
+  flex-shrink: 0;
+}
+
+.search-input {
+  width: 100%;
+  height: 30px;
+  padding: 0 30px 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  background: var(--control);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+  transition: border-color var(--t), background var(--t), box-shadow var(--t);
+}
+
+.search-input::placeholder {
+  color: var(--text-3);
+}
+
+.search-input:focus {
+  border-color: color-mix(in srgb, var(--blue) 45%, var(--hairline));
+  background: var(--surface);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 12%, transparent);
+}
+
+.search-clear {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  color: var(--text-3);
+}
+
+.search-clear:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
 /* chat list */
 
 .chat-list {
@@ -447,6 +496,23 @@ code {
   color: var(--blue);
 }
 
+.search-meta {
+  margin-top: 1px;
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-snippet mark {
+  padding: 0 1px;
+  border-radius: 3px;
+  background: rgba(255, 204, 0, 0.36);
+  color: inherit;
+}
+
 /* selected row: Messages blue with white content */
 
 .chat-row.active .row-name {
@@ -459,6 +525,15 @@ code {
 
 .chat-row.active .row-snippet {
   color: rgba(255, 255, 255, 0.82);
+}
+
+.chat-row.active .search-meta {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.chat-row.active .search-snippet mark {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
 }
 
 .chat-row.active .row-reason {

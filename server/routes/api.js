@@ -9,6 +9,7 @@ import {
   listChats,
   getChat,
   getMessages,
+  searchMessages,
   getRecentSentTexts,
   isGroupStartedByMe,
 } from '../db/chatdb.js';
@@ -280,6 +281,21 @@ router.get('/chats', wrap(async (req, res) => {
   if (filter === 'archived') chats = chats.filter((c) => c.archived);
   else if (filter !== 'all') chats = chats.filter((c) => !c.archived);
   res.json({ chats });
+}));
+
+router.get('/search', wrap(async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (q.length < 2) return res.json({ results: [] });
+
+  const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+  const archivedMap = getArchivedMap();
+  const dismissedMap = getDismissedMap();
+  const invitedEmails = await getInvitedAttendeeEmails();
+  const results = searchMessages({ query: q, limit }).map(({ chat, message }) => ({
+    chat: toSummary(chat, archivedMap, dismissedMap, invitedEmails),
+    message: withSenderName(message),
+  }));
+  res.json({ results });
 }));
 
 router.get('/chats/:guid/messages', wrap(async (req, res) => {

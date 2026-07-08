@@ -32,6 +32,12 @@ export default function Sidebar({
   serverUp,
   showPowerItems,
   setShowPowerItems,
+  searchQuery,
+  setSearchQuery,
+  searchResults,
+  searchLoading,
+  searchError,
+  searchActive,
 }) {
   const loading = chats === null;
   const inArchived = view === 'archived';
@@ -83,11 +89,48 @@ export default function Sidebar({
         </button>
       </header>
 
+      <div className="search-wrap">
+        <input
+          className="search-input"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search messages"
+          aria-label="Search messages"
+        />
+        {searchQuery && (
+          <button
+            className="search-clear"
+            onClick={() => setSearchQuery('')}
+            title="Clear search"
+            aria-label="Clear search"
+          >
+            <DismissIcon size={11} />
+          </button>
+        )}
+      </div>
+
       <div className="chat-list" role="listbox" aria-label="Conversations">
         {chatsError && <div className="list-note list-note-err">{chatsError}</div>}
-        {loading && !chatsError && <div className="list-note">Loading conversations…</div>}
+        {!searchActive && loading && !chatsError && <div className="list-note">Loading conversations…</div>}
 
-        {!inArchived && (
+        {searchActive ? (
+          <>
+            {searchError && <div className="list-note list-note-err">{searchError}</div>}
+            {searchLoading && <div className="list-note">Searching…</div>}
+            {!searchLoading && !searchError && searchResults.length === 0 && (
+              <div className="list-note">No matches.</div>
+            )}
+            {searchResults.map((result) => (
+              <SearchResultRow
+                key={result.message.guid}
+                result={result}
+                query={searchQuery}
+                active={result.chat.guid === activeGuid}
+                onSelect={onSelect}
+              />
+            ))}
+          </>
+        ) : !inArchived ? (
           <>
             {timeSensitive.length > 0 && (
               <>
@@ -176,9 +219,7 @@ export default function Sidebar({
               </div>
             )}
           </>
-        )}
-
-        {inArchived && (
+        ) : (
           <>
             {rest.map((c) => (
               <ChatRow
@@ -271,6 +312,69 @@ function Avatar({ chat, name }) {
     <span className="avatar" style={style} aria-hidden="true">
       {initials}
     </span>
+  );
+}
+
+function searchSnippet(text, query) {
+  const source = String(text || '');
+  const needle = query.trim().toLowerCase();
+  const idx = source.toLowerCase().indexOf(needle);
+  if (idx === -1) return source.slice(0, 150);
+  const start = Math.max(0, idx - 44);
+  const end = Math.min(source.length, idx + needle.length + 90);
+  return `${start > 0 ? '…' : ''}${source.slice(start, end)}${end < source.length ? '…' : ''}`;
+}
+
+function HighlightedText({ text, query }) {
+  const needle = query.trim();
+  if (!needle) return text;
+  const lower = text.toLowerCase();
+  const idx = lower.indexOf(needle.toLowerCase());
+  if (idx === -1) return text;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark>{text.slice(idx, idx + needle.length)}</mark>
+      {text.slice(idx + needle.length)}
+    </>
+  );
+}
+
+function SearchResultRow({ result, query, active, onSelect }) {
+  const { chat, message } = result;
+  const name = chat.name || chat.chatIdentifier || chat.guid;
+  const sender = message.isFromMe ? 'You' : message.senderName || message.senderId || '';
+  const snippet = searchSnippet(message.text, query);
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onSelect(chat.guid);
+    }
+  };
+
+  return (
+    <div
+      className={`chat-row search-result ${active ? 'active' : ''}`}
+      role="option"
+      aria-selected={active}
+      tabIndex={0}
+      onClick={() => onSelect(chat.guid)}
+      onKeyDown={handleKey}
+    >
+      <span className="unread-dot off" />
+      <Avatar chat={chat} name={name} />
+      <div className="row-main">
+        <div className="row-top">
+          <span className="row-name">{name}</span>
+          <span className="row-time">{relTime(message.dateMs)}</span>
+        </div>
+        <div className="search-meta">{sender}</div>
+        <div className="row-snippet search-snippet">
+          <HighlightedText text={snippet} query={query} />
+        </div>
+      </div>
+    </div>
   );
 }
 

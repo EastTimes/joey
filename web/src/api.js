@@ -38,6 +38,11 @@ export function getChats(filter = 'inbox') {
   return request(`/api/chats?filter=${encodeURIComponent(filter)}`);
 }
 
+export function searchMessages(query, { limit = 50 } = {}) {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  return request(`/api/search?${params}`);
+}
+
 export function getMessages(guid, { limit = 60, before = null } = {}) {
   const params = new URLSearchParams({ limit: String(limit) });
   if (before != null) params.set('before', String(before));

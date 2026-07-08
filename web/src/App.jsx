@@ -28,9 +28,15 @@ export default function App() {
   const [refreshingTriage, setRefreshingTriage] = useState(false);
   const [changeTick, setChangeTick] = useState(0); // bumped on SSE 'change'
   const [showPowerItems, setShowPowerItems] = useState(getStoredPowerItems);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState(null);
   const lastActiveChat = useRef(null);
   const viewRef = useRef(view);
   viewRef.current = view;
+  const trimmedSearch = searchQuery.trim();
+  const searchActive = trimmedSearch.length >= 2;
 
   useEffect(() => {
     try {
@@ -70,6 +76,37 @@ export default function App() {
     }, 5000);
     return () => clearInterval(t);
   }, [view, loadChats]);
+
+  useEffect(() => {
+    let gone = false;
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      setSearchResults([]);
+      setSearchError(null);
+      setSearchLoading(false);
+      return () => {
+        gone = true;
+      };
+    }
+
+    setSearchLoading(true);
+    setSearchError(null);
+    const t = setTimeout(async () => {
+      try {
+        const data = await api.searchMessages(q);
+        if (!gone) setSearchResults(data.results || []);
+      } catch (err) {
+        if (!gone) setSearchError(err.message);
+      } finally {
+        if (!gone) setSearchLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      gone = true;
+      clearTimeout(t);
+    };
+  }, [searchQuery]);
 
   const reloadStatus = useCallback(async () => {
     try {
@@ -139,7 +176,9 @@ export default function App() {
   // Keep a snapshot of the open chat so the thread survives list churn
   // (e.g. the chat just got archived out of the current filter).
   const activeChat = useMemo(() => {
-    const found = (chats || []).find((c) => c.guid === activeGuid);
+    const found =
+      (searchResults || []).find((r) => r.chat.guid === activeGuid)?.chat ||
+      (chats || []).find((c) => c.guid === activeGuid);
     if (found) {
       lastActiveChat.current = found;
       return found;
@@ -148,10 +187,13 @@ export default function App() {
       return lastActiveChat.current;
     }
     return null;
-  }, [chats, activeGuid]);
+  }, [chats, searchResults, activeGuid]);
 
   // Sidebar order: time-sensitive → optional power sections → rest.
   const orderedGuids = useMemo(() => {
+    if (searchActive) {
+      return [...new Set(searchResults.map((r) => r.chat.guid))];
+    }
     if (!chats) return [];
     if (view === 'archived') return chats.map((c) => c.guid);
     const ts = chats.filter((c) => c.triage?.timeSensitive);
@@ -164,7 +206,7 @@ export default function App() {
     const fu = flagged.filter((c) => c.followup?.kind !== 'calendar_pending');
     const rest = chats.filter((c) => !c.triage?.timeSensitive && !c.followup);
     return [...ts, ...actions, ...fu, ...rest].map((c) => c.guid);
-  }, [chats, view, showPowerItems]);
+  }, [chats, view, showPowerItems, searchActive, searchResults]);
 
   // Optimistically drop a row from the visible list and advance the
   // selection: the row after it, the previous one if it was last, cleared
@@ -346,6 +388,12 @@ export default function App() {
           serverUp={serverUp}
           showPowerItems={showPowerItems}
           setShowPowerItems={setShowPowerItems}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          searchResults={searchResults}
+          searchLoading={searchLoading}
+          searchError={searchError}
+          searchActive={searchActive}
         />
         <main className="thread-pane">
           {activeChat ? (

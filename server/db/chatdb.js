@@ -136,6 +136,21 @@ function prepareStatements(d) {
       ORDER BY m.ROWID DESC
       LIMIT ?
     `),
+
+    searchMessages: d.prepare(`
+      SELECT c.ROWID AS chatRowid, c.guid AS chatGuid,
+             c.chat_identifier AS chatIdentifier, c.service_name AS serviceName,
+             c.display_name AS displayName, c.style,
+             ${MSG_COLS}
+      FROM message m
+      JOIN chat_message_join cmj ON cmj.message_id = m.ROWID
+      JOIN chat c ON c.ROWID = cmj.chat_id
+      LEFT JOIN handle h ON h.ROWID = m.handle_id
+      WHERE ${MSG_FILTER}
+        AND (m.text LIKE @like ESCAPE '\\' OR m.attributedBody IS NOT NULL)
+      ORDER BY m.ROWID DESC
+      LIMIT @scanLimit
+    `),
   };
 }
 
@@ -365,4 +380,38 @@ export function getRecentSentTexts({ limit = 30 } = {}) {
     if (out.length >= limit) break;
   }
   return out;
+}
+
+export function searchMessages({ query, limit = 50, scanLimit = 25000 } = {}) {
+  open();
+  const needle = String(query || '').trim().toLowerCase();
+  if (needle.length < 2) return [];
+
+  const results = [];
+  const seen = new Set();
+  const like = `%${needle.replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
+
+  for (const row of stmts.searchMessages.iterate({ like, scanLimit })) {
+    const message = rowToMsg(row);
+    if (!msgVisible(message)) continue;
+    if (!message.text.toLowerCase().includes(needle)) continue;
+    if (seen.has(message.guid)) continue;
+    seen.add(message.guid);
+
+    const chat = {
+      guid: row.chatGuid,
+      chatIdentifier: row.chatIdentifier || '',
+      serviceName: row.serviceName || '',
+      displayName: row.displayName || '',
+      isGroup: row.style === 43,
+      participants: stmts.participants.all(row.chatRowid).map((p) => p.id),
+      lastMessage: lastVisibleMessage(row.chatRowid),
+      unreadCount: stmts.unreadForChat.get(row.chatRowid).n,
+    };
+
+    results.push({ chat, message });
+    if (results.length >= limit) break;
+  }
+
+  return results;
 }
