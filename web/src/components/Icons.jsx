@@ -84,6 +84,14 @@ export function RefreshIcon({ size = 13, spinning = false }) {
   );
 }
 
+export function ComposeIcon({ size = 14 }) {
+  return (
+    <Base size={size}>
+      <path d="M8 3.25v9.5M3.25 8h9.5" />
+    </Base>
+  );
+}
+
 export function SparkIcon({ size = 13 }) {
   return (
     <Base size={size} filled>

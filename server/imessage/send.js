@@ -66,8 +66,14 @@ export async function sendMessage({ chatGuid, chatIdentifier, isGroup, service, 
   const participant = chatIdentifier || chatGuid;
   if (!participant) throw new Error('sendMessage: no target (chatIdentifier/chatGuid)');
 
-  if (String(service || '').toLowerCase() === 'imessage') {
-    await runOsascript(SCRIPT_IMESSAGE, participant, text);
+  const serviceName = String(service || '').toLowerCase();
+  if (serviceName === 'imessage') {
+    try {
+      await runOsascript(SCRIPT_IMESSAGE, participant, text);
+    } catch (err) {
+      if (chatGuid) throw err;
+      await runOsascript(SCRIPT_SMS, participant, text);
+    }
   } else {
     // SMS (and RCS) route through the SMS account; fall back to the chat id.
     try {
@@ -78,4 +84,15 @@ export async function sendMessage({ chatGuid, chatIdentifier, isGroup, service, 
     }
   }
   return { ok: true, dryRun: false };
+}
+
+export async function sendDirectMessage({ target, text }) {
+  if (!target || !String(target).trim()) throw new Error('sendDirectMessage: target is required');
+  return sendMessage({
+    chatGuid: null,
+    chatIdentifier: String(target).trim(),
+    isGroup: false,
+    service: 'iMessage',
+    text,
+  });
 }

@@ -13,7 +13,7 @@ function mergeMessages(prev, incoming) {
   return [...map.values()].sort((a, b) => a.rowid - b.rowid);
 }
 
-export default function Thread({ chat, refreshSignal, aiAvailable, onArchiveToggle, onSent, pushToast }) {
+export default function Thread({ chat, refreshSignal, aiAvailable, onArchiveToggle, onOpenDm, onSent, pushToast }) {
   const guid = chat.guid;
   const [messages, setMessages] = useState(null); // null = loading
   const [pending, setPending] = useState([]); // optimistic sends
@@ -152,8 +152,9 @@ export default function Thread({ chat, refreshSignal, aiAvailable, onArchiveTogg
   const name = chat.name || chat.chatIdentifier || chat.guid;
   const triage = chat.triage;
   const followup = chat.followup;
+  const participants = chat.participantDetails || (chat.participants || []).map((id) => ({ id, name: id }));
   const sub = chat.isGroup
-    ? `To: ${(chat.participants || []).join(', ')}`
+    ? `To: ${participants.map((p) => p.name || p.id).join(', ')}`
     : [chat.chatIdentifier, chat.serviceName].filter(Boolean).join(' · ');
 
   return (
@@ -162,9 +163,23 @@ export default function Thread({ chat, refreshSignal, aiAvailable, onArchiveTogg
         <div className="th-side th-left" />
         <div className="th-center">
           <h2 className="th-name">{name}</h2>
-          {sub && (
+          {!chat.isGroup && sub && (
             <div className="th-sub" title={sub}>
               {sub}
+            </div>
+          )}
+          {chat.isGroup && participants.length > 0 && (
+            <div className="th-people" title={sub}>
+              {participants.map((p) => (
+                <button
+                  key={p.id}
+                  className="th-person"
+                  onClick={() => onOpenDm(p)}
+                  title={`Message ${p.name || p.id}`}
+                >
+                  {p.name || p.id}
+                </button>
+              ))}
             </div>
           )}
         </div>
@@ -244,7 +259,15 @@ export default function Thread({ chat, refreshSignal, aiAvailable, onArchiveTogg
           if (row.type === 'pending') {
             return <PendingBubble key={row.key} item={row.item} />;
           }
-          return <Bubble key={row.key} msg={row.msg} showSender={row.showSender} cont={row.cont} />;
+          return (
+            <Bubble
+              key={row.key}
+              msg={row.msg}
+              showSender={row.showSender}
+              cont={row.cont}
+              onOpenDm={onOpenDm}
+            />
+          );
         })}
       </div>
 
@@ -253,14 +276,22 @@ export default function Thread({ chat, refreshSignal, aiAvailable, onArchiveTogg
   );
 }
 
-function Bubble({ msg, showSender, cont }) {
+function Bubble({ msg, showSender, cont, onOpenDm }) {
   const mine = msg.isFromMe;
   const sms = msg.service !== 'iMessage';
   const reactions = msg.reactions || [];
   return (
     <div className={`msg-row ${mine ? 'mine' : 'theirs'} ${cont ? 'cont' : ''} ${reactions.length ? 'has-rx' : ''}`}>
       <div className="msg-stack">
-        {showSender && <div className="msg-sender">{msg.senderName || msg.senderId || 'Unknown'}</div>}
+        {showSender && (
+          <button
+            className="msg-sender"
+            onClick={() => onOpenDm({ id: msg.senderId, name: msg.senderName || msg.senderId || 'Unknown' })}
+            title={`Message ${msg.senderName || msg.senderId || 'Unknown'}`}
+          >
+            {msg.senderName || msg.senderId || 'Unknown'}
+          </button>
+        )}
         <div className="bubble-wrap">
           <div className={`bubble ${mine ? (sms ? 'b-sms' : 'b-mine') : 'b-theirs'}`}>
             {msg.text || (msg.hasAttachments ? <span className="attach-note">Attachment</span> : ' ')}

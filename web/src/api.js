@@ -54,6 +54,15 @@ export function sendMessage(guid, text, draftId = null) {
   return post(`/api/chats/${encodeURIComponent(guid)}/send`, payload);
 }
 
+export function sendDirectMessage(target, text) {
+  return post('/api/compose/send', { target, text });
+}
+
+export function resolveRecipient(target) {
+  const params = new URLSearchParams({ target });
+  return request(`/api/recipient/resolve?${params}`);
+}
+
 export function archiveChat(guid) {
   return post(`/api/chats/${encodeURIComponent(guid)}/archive`);
 }

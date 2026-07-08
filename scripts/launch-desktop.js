@@ -52,7 +52,8 @@ function canUseForDesktop(status) {
   return !!(
     status?.chatDbOk &&
     status?.features?.messageSearch &&
-    status?.features?.contactSearch
+    status?.features?.contactSearch &&
+    status?.features?.directCompose
   );
 }
 

@@ -8,6 +8,7 @@ import {
   ArchiveIcon,
   UnarchiveIcon,
   RefreshIcon,
+  ComposeIcon,
   BackIcon,
   PersonIcon,
   PeopleIcon,
@@ -26,6 +27,7 @@ export default function Sidebar({
   onUnarchive,
   onRefreshTriage,
   onDismissFollowup,
+  onComposeNew,
   onStatusRefresh,
   refreshing,
   status,
@@ -78,15 +80,27 @@ export default function Sidebar({
 
       <header className="sidebar-head">
         <h1 className="sb-title">{inArchived ? 'Archived' : 'Messages'}</h1>
-        <button
-          className="icon-btn"
-          onClick={onRefreshTriage}
-          disabled={refreshing}
-          title="Refresh classification — time-sensitive triage + follow-up reminders"
-          aria-label="Refresh classification"
-        >
-          <RefreshIcon size={15} spinning={refreshing} />
-        </button>
+        <div className="sidebar-actions">
+          {!inArchived && (
+            <button
+              className="icon-btn"
+              onClick={onComposeNew}
+              title="New message"
+              aria-label="New message"
+            >
+              <ComposeIcon size={15} />
+            </button>
+          )}
+          <button
+            className="icon-btn"
+            onClick={onRefreshTriage}
+            disabled={refreshing}
+            title="Refresh classification — time-sensitive triage + follow-up reminders"
+            aria-label="Refresh classification"
+          >
+            <RefreshIcon size={15} spinning={refreshing} />
+          </button>
+        </div>
       </header>
 
       <div className="search-wrap">

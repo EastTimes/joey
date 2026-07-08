@@ -218,6 +218,12 @@ code {
   flex-shrink: 0;
 }
 
+.sidebar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
 .sb-title {
   margin: 0;
   font-size: 15px;
@@ -910,6 +916,33 @@ code {
   text-overflow: ellipsis;
 }
 
+.th-people {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  margin-top: 2px;
+}
+
+.th-person {
+  min-width: 0;
+  max-width: 118px;
+  padding: 1px 6px 2px;
+  border-radius: 999px;
+  color: var(--text-2);
+  background: var(--control);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.th-person:hover {
+  color: var(--blue);
+  background: var(--hover);
+}
+
 .th-side {
   min-width: 0;
 }
@@ -1074,9 +1107,16 @@ code {
 }
 
 .msg-sender {
+  align-self: flex-start;
   font-size: 11px;
   color: var(--text-2);
   margin: 5px 0 1px 12px;
+  padding: 0;
+  text-align: left;
+}
+
+.msg-sender:hover {
+  color: var(--blue);
 }
 
 .bubble {
@@ -1228,6 +1268,142 @@ code {
   margin: 10px 0 0;
   font-size: 11.5px;
   color: var(--text-3);
+}
+
+/* ---------- direct compose ---------- */
+
+.compose-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(4px);
+}
+
+.compose-sheet {
+  width: min(460px, 100%);
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--hairline-strong);
+  box-shadow: 0 22px 80px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+
+.compose-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.compose-head h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.compose-close {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--text-2);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.compose-close:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.compose-field {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.compose-field input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+
+.compose-recipient {
+  padding: 0 14px 8px 56px;
+  margin-top: -3px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.compose-text {
+  display: block;
+  width: calc(100% - 28px);
+  min-height: 120px;
+  margin: 12px 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: 9px;
+  background: var(--pill-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  resize: vertical;
+  outline: none;
+}
+
+.compose-text:focus {
+  border-color: color-mix(in srgb, var(--blue) 45%, var(--hairline-strong));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 10%, transparent);
+}
+
+.compose-error {
+  margin: 0 14px 10px;
+  color: var(--red-deep);
+  font-size: 12px;
+}
+
+.compose-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 14px 14px;
+}
+
+.compose-secondary,
+.compose-primary {
+  min-width: 74px;
+  padding: 6px 12px;
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.compose-secondary {
+  background: var(--control);
+  color: var(--text-2);
+}
+
+.compose-primary {
+  background: var(--blue);
+  color: #fff;
+}
+
+.compose-primary:disabled {
+  opacity: 0.45;
 }
 
 /* ---------- composer ---------- */

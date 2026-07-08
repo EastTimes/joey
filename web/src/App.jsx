@@ -32,6 +32,7 @@ export default function App() {
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState(null);
+  const [compose, setCompose] = useState(null);
   const lastActiveChat = useRef(null);
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -312,6 +313,59 @@ export default function App() {
 
   const handleSent = useCallback(() => loadChats(view), [view, loadChats]);
 
+  const openResolvedChat = useCallback((chat) => {
+    if (!chat?.guid) return;
+    setChats((prev) => {
+      if (!prev) return [chat];
+      if (prev.some((c) => c.guid === chat.guid)) return prev;
+      return [chat, ...prev];
+    });
+    lastActiveChat.current = chat;
+    setActiveGuid(chat.guid);
+  }, []);
+
+  const handleComposeNew = useCallback(() => {
+    setCompose({ target: '', name: '' });
+  }, []);
+
+  const handleOpenDm = useCallback(
+    async (person) => {
+      const target = String(person?.id || '').trim();
+      if (!target) {
+        pushToast("Couldn't open DM — no number or email found");
+        return;
+      }
+      try {
+        const res = await api.resolveRecipient(target);
+        if (res.chat) {
+          openResolvedChat(res.chat);
+          return;
+        }
+        setCompose({ target, name: person?.name || res.name || target });
+      } catch (err) {
+        pushToast(`Couldn't open DM — ${err.message}`);
+      }
+    },
+    [openResolvedChat, pushToast]
+  );
+
+  const handleComposeSent = useCallback(
+    async (target) => {
+      setCompose(null);
+      pushToast('Message sent', 'info');
+      await loadChats(viewRef.current);
+      setTimeout(async () => {
+        try {
+          const res = await api.resolveRecipient(target);
+          if (res.chat) openResolvedChat(res.chat);
+        } catch {
+          // The conversation may not be in chat.db yet; polling will catch up.
+        }
+      }, 1200);
+    },
+    [loadChats, openResolvedChat, pushToast]
+  );
+
   // ⌘⇧E (Ctrl+Shift+E off-Mac): archive the selected chat — unarchive when in
   // the archived view. Capture phase so it wins even while the composer has focus.
   useEffect(() => {
@@ -382,6 +436,7 @@ export default function App() {
           onUnarchive={handleUnarchive}
           onRefreshTriage={handleRefreshTriage}
           onDismissFollowup={handleDismissFollowup}
+          onComposeNew={handleComposeNew}
           onStatusRefresh={reloadStatus}
           refreshing={refreshingTriage}
           status={status}
@@ -403,6 +458,7 @@ export default function App() {
               refreshSignal={changeTick}
               aiAvailable={!!status?.aiAvailable}
               onArchiveToggle={handleArchiveToggle}
+              onOpenDm={handleOpenDm}
               onSent={handleSent}
               pushToast={pushToast}
             />
@@ -411,7 +467,92 @@ export default function App() {
           )}
         </main>
       </div>
+      {compose && (
+        <ComposeSheet
+          initialTarget={compose.target}
+          displayName={compose.name}
+          onClose={() => setCompose(null)}
+          onSent={handleComposeSent}
+        />
+      )}
       <Toasts toasts={toasts} dismiss={dismissToast} />
+    </div>
+  );
+}
+
+function ComposeSheet({ initialTarget, displayName, onClose, onSent }) {
+  const [target, setTarget] = useState(initialTarget || '');
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
+  const targetRef = useRef(null);
+  const textRef = useRef(null);
+
+  useEffect(() => {
+    if (initialTarget) textRef.current?.focus();
+    else targetRef.current?.focus();
+  }, [initialTarget]);
+
+  const canSend = target.trim().length > 0 && text.trim().length > 0 && !sending;
+
+  const send = async () => {
+    if (!canSend) return;
+    setSending(true);
+    setError(null);
+    try {
+      const recipient = target.trim();
+      await api.sendDirectMessage(recipient, text.trim());
+      onSent(recipient);
+    } catch (err) {
+      setError(err.message || 'Send failed');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'Escape') onClose();
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      send();
+    }
+  };
+
+  return (
+    <div className="compose-backdrop" role="presentation" onMouseDown={onClose}>
+      <div className="compose-sheet" role="dialog" aria-modal="true" aria-label="New message" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="compose-head">
+          <h2>New Message</h2>
+          <button className="compose-close" onClick={onClose} aria-label="Close">×</button>
+        </div>
+        <label className="compose-field">
+          <span>To</span>
+          <input
+            ref={targetRef}
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="+1 555 123 4567 or name@email.com"
+          />
+        </label>
+        {displayName && <div className="compose-recipient">{displayName}</div>}
+        <textarea
+          ref={textRef}
+          className="compose-text"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder="iMessage"
+          rows={5}
+        />
+        {error && <div className="compose-error">{error}</div>}
+        <div className="compose-actions">
+          <button className="compose-secondary" onClick={onClose}>Cancel</button>
+          <button className="compose-primary" onClick={send} disabled={!canSend}>
+            {sending ? 'Sending…' : 'Send'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

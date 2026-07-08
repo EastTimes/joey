@@ -30,7 +30,7 @@ import {
   dismissFollowup,
   isFollowupDismissed,
 } from '../db/appdb.js';
-import { sendMessage } from '../imessage/send.js';
+import { sendDirectMessage, sendMessage } from '../imessage/send.js';
 import {
   contactsStatus,
   exportContactsCsv,
@@ -85,6 +85,13 @@ function chatName(chat) {
     .map((p) => resolveName(p) || p)
     .join(', ');
   return names || chat.chatIdentifier;
+}
+
+function participantDetails(chat) {
+  return (chat.participants || []).map((id) => ({
+    id,
+    name: resolveName(id) || id,
+  }));
 }
 
 // Effective-archive rule: archived entry exists AND no message newer than the
@@ -156,10 +163,18 @@ function toSummary(chat, archivedMap, dismissedMap, invitedEmails) {
   return {
     ...chat,
     name: chatName(chat),
+    participantDetails: participantDetails(chat),
     archived,
     triage: triageable ? getTriage(last.guid) : null,
     followup: archived ? null : activeFollowup(chat, dismissedMap, invitedEmails),
   };
+}
+
+function validRecipient(target) {
+  const value = String(target || '').trim();
+  if (!value || value.length > 256) return false;
+  if (value.includes('@')) return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  return value.replace(/\D/g, '').length >= 7;
 }
 
 function findChat(guid) {
@@ -194,6 +209,7 @@ router.get('/status', wrap(async (req, res) => {
     features: {
       messageSearch: true,
       contactSearch: true,
+      directCompose: true,
     },
     contacts: contactsStatus(),
     draftModel: DRAFT_MODEL,
@@ -318,6 +334,33 @@ router.get('/search', wrap(async (req, res) => {
   }));
   const results = [...contactResults, ...messageResults].slice(0, limit);
   res.json({ results });
+}));
+
+router.get('/recipient/resolve', wrap(async (req, res) => {
+  const target = String(req.query.target || '').trim();
+  if (!validRecipient(target)) return res.status(400).json({ error: 'target must be a phone number or email' });
+
+  const archivedMap = getArchivedMap();
+  const dismissedMap = getDismissedMap();
+  const invitedEmails = await getInvitedAttendeeEmails();
+  const chat = chatsForHandles([target], { limit: 12 }).find((c) => !c.isGroup);
+  res.json({
+    chat: chat ? toSummary(chat, archivedMap, dismissedMap, invitedEmails) : null,
+    target,
+    name: resolveName(target) || target,
+  });
+}));
+
+router.post('/compose/send', wrap(async (req, res) => {
+  const { target, text } = req.body || {};
+  if (!validRecipient(target)) {
+    return res.status(400).json({ error: 'target must be a phone number or email' });
+  }
+  if (typeof text !== 'string' || text.trim() === '' || text.length > 10000) {
+    return res.status(400).json({ error: 'text must be a non-empty string of at most 10000 characters' });
+  }
+  const result = await sendDirectMessage({ target: String(target).trim(), text });
+  res.json({ ok: result.ok, dryRun: result.dryRun });
 }));
 
 router.get('/chats/:guid/messages', wrap(async (req, res) => {
