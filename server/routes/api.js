@@ -191,6 +191,10 @@ router.get('/status', wrap(async (req, res) => {
     chatDbOk: dbOk,
     chatDbError: dbOk ? null : chatDbError(),
     messageCount: dbOk ? messageCount() : 0,
+    features: {
+      messageSearch: true,
+      contactSearch: true,
+    },
     contacts: contactsStatus(),
     draftModel: DRAFT_MODEL,
     triageProvider: classificationProvider('triage'),

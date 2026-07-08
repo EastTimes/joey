@@ -48,6 +48,14 @@ async function readStatus(url, timeoutMs = 900) {
   }
 }
 
+function canUseForDesktop(status) {
+  return !!(
+    status?.chatDbOk &&
+    status?.features?.messageSearch &&
+    status?.features?.contactSearch
+  );
+}
+
 function canUsePort(port) {
   return new Promise((resolve) => {
     const probe = net.createServer();
@@ -70,7 +78,7 @@ async function waitForServer(url) {
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     const status = await readStatus(url, 1200);
-    if (status) return status;
+    if (canUseForDesktop(status)) return status;
     await sleep(300);
   }
   return null;
@@ -102,7 +110,7 @@ async function reusableServerUrl() {
 
   const url = serverUrl(state.port);
   const status = await readStatus(url);
-  return status ? url : null;
+  return canUseForDesktop(status) ? url : null;
 }
 
 function appExecutable(appPath) {
@@ -139,7 +147,7 @@ async function ensureServer() {
 
   const defaultUrl = serverUrl(DEFAULT_PORT);
   const existing = await readStatus(defaultUrl);
-  if (existing?.chatDbOk) {
+  if (canUseForDesktop(existing)) {
     return defaultUrl;
   }
 
